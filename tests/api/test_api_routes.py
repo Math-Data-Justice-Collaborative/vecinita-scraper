@@ -1,0 +1,367 @@
+"""Tests for REST API routes and endpoints."""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from vecinita_scraper.api.server import create_app
+from vecinita_scraper.core.models import JobStatus
+
+
+@pytest.fixture
+def client():
+    """Create FastAPI test client."""
+    app = create_app()
+    headers = {}
+    auth_key = os.getenv("MODAL_AUTH_KEY", "").strip()
+    auth_secret = os.getenv("MODAL_AUTH_SECRET", "").strip()
+    if auth_key and auth_secret:
+        headers = {
+            "x-modal-auth-key": auth_key,
+            "x-modal-auth-secret": auth_secret,
+        }
+    return TestClient(app, headers=headers)
+
+
+@pytest.fixture
+def mock_db_for_api():
+    """Mock database for API tests."""
+    db = AsyncMock()
+    db.create_scraping_job = AsyncMock(return_value="test-job-id-123")
+    db.get_job_status = AsyncMock(
+        return_value={
+            "id": "test-job-id-123",
+            "url": "https://example.com",
+            "status": "pending",
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "error_message": None,
+            "crawl_url_count": 0,
+            "chunk_count": 0,
+            "embedding_count": 0,
+        }
+    )
+    db.update_job_status = AsyncMock()
+    return db
+
+
+class TestHealthEndpoint:
+    """Test health check endpoint."""
+
+    def test_health_check(self, client):
+        """Health check should return ok status."""
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["service"] == "vecinita-scraper"
+
+
+class TestProxyAuth:
+    """Test proxy auth middleware behavior."""
+
+    def test_rejects_missing_headers_when_enabled(self, monkeypatch):
+        """Requests without proxy auth headers should fail when proxy auth is enabled."""
+        monkeypatch.setenv("MODAL_PROXY_AUTH_ENABLED", "true")
+        monkeypatch.setenv("MODAL_AUTH_KEY", "test-key")
+        monkeypatch.setenv("MODAL_AUTH_SECRET", "test-secret")
+        app = create_app()
+        client = TestClient(app)
+
+        response = client.get("/jobs")
+        assert response.status_code == 401
+
+    def test_allows_health_without_headers_when_enabled(self, monkeypatch):
+        """Health endpoint should remain publicly accessible."""
+        monkeypatch.setenv("MODAL_PROXY_AUTH_ENABLED", "true")
+        monkeypatch.setenv("MODAL_AUTH_KEY", "test-key")
+        monkeypatch.setenv("MODAL_AUTH_SECRET", "test-secret")
+        app = create_app()
+        client = TestClient(app)
+
+        response = client.get("/health")
+        assert response.status_code == 200
+
+
+class TestSubmitJob:
+    """Test job submission endpoint."""
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    @patch("vecinita_scraper.api.routes.scrape_jobs_queue")
+    def test_submit_job_minimal(self, mock_queue, mock_db_class, client, mock_db_for_api):
+        """Submit job with minimal config should succeed."""
+        mock_db_class.return_value = mock_db_for_api
+        mock_queue.put = AsyncMock()
+        mock_queue.put.aio = AsyncMock()
+
+        response = client.post(
+            "/jobs",
+            json={
+                "url": "https://example.com",
+                "user_id": "user-123",
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["job_id"] == "test-job-id-123"
+        assert data["status"] == JobStatus.PENDING
+        assert "created_at" in data
+        assert data["url"] == "https://example.com/"
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    @patch("vecinita_scraper.api.routes.scrape_jobs_queue")
+    def test_submit_job_with_configs(self, mock_queue, mock_db_class, client, mock_db_for_api):
+        """Submit job with custom crawl and chunking configs."""
+        mock_db_class.return_value = mock_db_for_api
+        mock_queue.put = AsyncMock()
+        mock_queue.put.aio = AsyncMock()
+
+        response = client.post(
+            "/jobs",
+            json={
+                "url": "https://example.com",
+                "user_id": "user-123",
+                "crawl_config": {
+                    "max_depth": 2,
+                    "timeout_seconds": 120,
+                    "headless": True,
+                },
+                "chunking_config": {
+                    "min_size_tokens": 256,
+                    "max_size_tokens": 2048,
+                    "overlap_ratio": 0.1,
+                },
+                "metadata": {"source": "api_test"},
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["job_id"] == "test-job-id-123"
+
+        # Verify database was called with configs
+        mock_db_for_api.create_scraping_job.assert_called_once()
+        call_args = mock_db_for_api.create_scraping_job.call_args
+        assert call_args[1]["url"] == "https://example.com/"
+        assert call_args[1]["metadata"]["source"] == "api_test"
+
+    def test_submit_job_invalid_url(self, client):
+        """Submit job with invalid URL should fail."""
+        response = client.post(
+            "/jobs",
+            json={
+                "url": "not-a-url",
+                "user_id": "user-123",
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_submit_job_missing_user_id(self, client):
+        """Submit job without user_id should fail."""
+        response = client.post(
+            "/jobs",
+            json={"url": "https://example.com"},
+        )
+
+        assert response.status_code == 422
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_submit_job_database_error(self, mock_db_class, client):
+        """Submit job with database error should return 500."""
+        from vecinita_scraper.core.errors import DatabaseError
+
+        mock_db = AsyncMock()
+        mock_db.create_scraping_job = AsyncMock(
+            side_effect=DatabaseError("Connection failed")
+        )
+        mock_db_class.return_value = mock_db
+
+        response = client.post(
+            "/jobs",
+            json={
+                "url": "https://example.com",
+                "user_id": "user-123",
+            },
+        )
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "Database error" in data["detail"]
+
+
+class TestGetJobStatus:
+    """Test job status retrieval endpoint."""
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_get_job_status_pending(self, mock_db_class, client, mock_db_for_api):
+        """Get status of pending job."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "url": "https://example.com",
+            "status": JobStatus.PENDING,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "error_message": None,
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.get("/jobs/job-123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job-123"
+        assert data["status"] == JobStatus.PENDING
+        assert data["progress_pct"] == 5
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_get_job_status_crawling(self, mock_db_class, client, mock_db_for_api):
+        """Get status of crawling job shows correct progress."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "status": JobStatus.CRAWLING,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.get("/jobs/job-123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == JobStatus.CRAWLING
+        assert data["progress_pct"] == 20
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_get_job_status_completed(self, mock_db_class, client, mock_db_for_api):
+        """Get status of completed job shows 100% progress."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "status": JobStatus.COMPLETED,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.get("/jobs/job-123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == JobStatus.COMPLETED
+        assert data["progress_pct"] == 100
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_get_job_status_failed(self, mock_db_class, client, mock_db_for_api):
+        """Get status of failed job includes error message."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "status": JobStatus.FAILED,
+            "error_message": "Connection timeout",
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.get("/jobs/job-123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == JobStatus.FAILED
+        assert data["error_message"] == "Connection timeout"
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_get_job_status_not_found(self, mock_db_class, client):
+        """Get status of nonexistent job returns 404."""
+        mock_db = AsyncMock()
+        mock_db.get_job_status = AsyncMock(return_value=None)
+        mock_db_class.return_value = mock_db
+
+        response = client.get("/jobs/nonexistent-job")
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"]
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_get_job_status_database_error(self, mock_db_class, client):
+        """Get status with database error returns 500."""
+        from vecinita_scraper.core.errors import DatabaseError
+
+        mock_db = AsyncMock()
+        mock_db.get_job_status = AsyncMock(
+            side_effect=DatabaseError("Connection failed")
+        )
+        mock_db_class.return_value = mock_db
+
+        response = client.get("/jobs/job-123")
+
+        assert response.status_code == 500
+
+
+class TestCancelJob:
+    """Test job cancellation endpoint."""
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_cancel_pending_job(self, mock_db_class, client, mock_db_for_api):
+        """Cancel a pending job should succeed."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "status": JobStatus.PENDING,
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.post("/jobs/job-123/cancel")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job-123"
+        assert data["previous_status"] == JobStatus.PENDING
+        assert data["new_status"] == JobStatus.CANCELLED
+        mock_db_for_api.update_job_status.assert_called_once_with(
+            "job-123", JobStatus.CANCELLED.value
+        )
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_cancel_completed_job_fails(self, mock_db_class, client, mock_db_for_api):
+        """Cannot cancel already completed job."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "status": JobStatus.COMPLETED,
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.post("/jobs/job-123/cancel")
+
+        assert response.status_code == 409
+        data = response.json()
+        assert "Cannot cancel" in data["detail"]
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_cancel_failed_job_fails(self, mock_db_class, client, mock_db_for_api):
+        """Cannot cancel already failed job."""
+        mock_db_for_api.get_job_status.return_value = {
+            "id": "job-123",
+            "status": JobStatus.FAILED,
+        }
+        mock_db_class.return_value = mock_db_for_api
+
+        response = client.post("/jobs/job-123/cancel")
+
+        assert response.status_code == 409
+
+    @patch("vecinita_scraper.api.routes.SupabaseDB")
+    def test_cancel_nonexistent_job(self, mock_db_class, client):
+        """Cannot cancel nonexistent job."""
+        mock_db = AsyncMock()
+        mock_db.get_job_status = AsyncMock(return_value=None)
+        mock_db_class.return_value = mock_db
+
+        response = client.post("/jobs/nonexistent-job/cancel")
+
+        assert response.status_code == 404
