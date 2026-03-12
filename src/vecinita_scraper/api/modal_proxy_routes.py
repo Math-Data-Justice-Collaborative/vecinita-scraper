@@ -33,9 +33,11 @@ def _resolve_service_base_url(service: str) -> str:
     return base_url.rstrip("/")
 
 
-def _build_upstream_headers(service: str, content_type: str | None, accept: str | None) -> dict[str, str]:
+def _build_upstream_headers(
+    service: str, content_type: str | None, accept: str | None
+) -> dict[str, str]:
     """Build headers for upstream Modal service requests.
-    
+
     Note: The proxy itself now requires Modal proxy auth via Modal-Key and Modal-Secret
     headers from the client, but when forwarding to upstream services, we use the
     configured Modal auth credentials.

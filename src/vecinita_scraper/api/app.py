@@ -36,7 +36,7 @@ image = (
 @modal.asgi_app(requires_proxy_auth=True)
 def fastapi() -> object:
     """ASGI entrypoint for Modal to serve FastAPI app with proxy authentication.
-    
+
     Clients must provide Modal-Key and Modal-Secret headers:
         Modal-Key: <proxy-auth-token-id>
         Modal-Secret: <proxy-auth-token-secret>
