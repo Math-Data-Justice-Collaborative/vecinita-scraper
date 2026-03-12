@@ -27,8 +27,8 @@ def create_app() -> FastAPI:
     """Create and configure FastAPI app."""
     expected_auth_key = os.getenv("MODAL_AUTH_KEY", "").strip()
     expected_auth_secret = os.getenv("MODAL_AUTH_SECRET", "").strip()
-    proxy_auth_required = (
-        _is_proxy_auth_enabled() and bool(expected_auth_key and expected_auth_secret)
+    proxy_auth_required = _is_proxy_auth_enabled() and bool(
+        expected_auth_key and expected_auth_secret
     )
 
     app = FastAPI(

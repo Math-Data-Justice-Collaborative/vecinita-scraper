@@ -69,11 +69,7 @@ class SupabaseDB:
         """Get the status of a scraping job."""
         try:
             result = (
-                self.client.table("scraping_jobs")
-                .select("*")
-                .eq("id", job_id)
-                .single()
-                .execute()
+                self.client.table("scraping_jobs").select("*").eq("id", job_id).single().execute()
             )
             return cast(dict[str, Any], result.data)
         except Exception as e:
@@ -91,9 +87,7 @@ class SupabaseDB:
             update_data["error_message"] = error_message
 
         try:
-            self.client.table("scraping_jobs").update(update_data).eq(
-                "id", job_id
-            ).execute()
+            self.client.table("scraping_jobs").update(update_data).eq("id", job_id).execute()
             logger.info("Updated job status", job_id=job_id, status=status)
         except Exception as e:
             raise DatabaseError(f"Failed to update job status: {str(e)}") from e
@@ -203,9 +197,7 @@ class SupabaseDB:
         except Exception as e:
             raise DatabaseError(f"Failed to store chunks: {str(e)}") from e
 
-    async def store_embeddings(
-        self, job_id: str, chunk_embeddings: list[dict[str, Any]]
-    ) -> None:
+    async def store_embeddings(self, job_id: str, chunk_embeddings: list[dict[str, Any]]) -> None:
         """Store embeddings."""
         try:
             for embedding_data in chunk_embeddings:

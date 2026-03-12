@@ -31,6 +31,7 @@ image = (
     .add_local_python_source("vecinita_scraper")
 )
 
+
 # Serve the FastAPI app via Modal ASGI endpoint
 @app.function(image=image, secrets=APP_SECRETS)
 @modal.asgi_app(requires_proxy_auth=True)

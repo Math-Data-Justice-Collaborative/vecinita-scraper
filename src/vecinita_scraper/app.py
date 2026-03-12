@@ -11,6 +11,7 @@ try:
 
     modal = _modal
 except ImportError:  # pragma: no cover - used only in local test environments without Modal
+
     class _DummyAsyncMethod:
         async def aio(self, *args: Any, **kwargs: Any) -> Any:
             return None

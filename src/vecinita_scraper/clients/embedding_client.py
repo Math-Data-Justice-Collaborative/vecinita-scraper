@@ -53,9 +53,7 @@ class EmbeddingClient:
             or "BAAI/bge-small-en-v1.5"
         )
         dimensions = int(
-            response_json.get("dimensions")
-            or response_json.get("embedding_dimensions")
-            or 384
+            response_json.get("dimensions") or response_json.get("embedding_dimensions") or 384
         )
         max_tokens = int(response_json.get("max_tokens") or self._infer_max_tokens(dimensions))
         batch_size = int(response_json.get("batch_size") or self._default_batch_size)

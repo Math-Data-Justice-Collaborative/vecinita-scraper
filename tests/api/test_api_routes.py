@@ -178,9 +178,7 @@ class TestSubmitJob:
         from vecinita_scraper.core.errors import DatabaseError
 
         mock_db = AsyncMock()
-        mock_db.create_scraping_job = AsyncMock(
-            side_effect=DatabaseError("Connection failed")
-        )
+        mock_db.create_scraping_job = AsyncMock(side_effect=DatabaseError("Connection failed"))
         mock_db_class.return_value = mock_db
 
         response = client.post(
@@ -294,9 +292,7 @@ class TestGetJobStatus:
         from vecinita_scraper.core.errors import DatabaseError
 
         mock_db = AsyncMock()
-        mock_db.get_job_status = AsyncMock(
-            side_effect=DatabaseError("Connection failed")
-        )
+        mock_db.get_job_status = AsyncMock(side_effect=DatabaseError("Connection failed"))
         mock_db_class.return_value = mock_db
 
         response = client.get("/jobs/job-123")

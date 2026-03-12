@@ -312,9 +312,7 @@ class TestQueueBatchInjection:
             with patch("vecinita_scraper.workers.chunker.embed_jobs_queue") as mock_queue:
                 with patch("vecinita_scraper.workers.chunker.get_config") as mock_config:
                     # Mock store_chunks to return correct number of IDs
-                    db.store_chunks = AsyncMock(
-                        return_value=[f"chunk-{i:03d}" for i in range(5)]
-                    )
+                    db.store_chunks = AsyncMock(return_value=[f"chunk-{i:03d}" for i in range(5)])
 
                     mock_config_inst = MagicMock()
                     mock_config_inst.chunking = ChunkingConfig()

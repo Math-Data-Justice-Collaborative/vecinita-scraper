@@ -13,6 +13,7 @@ try:
 except ImportError:  # pragma: no cover - fallback for minimal test environments
     _dotenv_load = None
 
+
 def _load_dotenv() -> bool:
     if _dotenv_load is None:
         return False
@@ -103,9 +104,7 @@ class APIConfig:
                 self.vecinita_embedding_api_url,
             ]
         ):
-            raise ConfigError(
-                "Missing required API configuration: VECINITA_EMBEDDING_API_URL"
-            )
+            raise ConfigError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
 
 
 @dataclass

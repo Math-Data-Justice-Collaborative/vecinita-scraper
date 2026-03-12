@@ -98,7 +98,9 @@ async def test_crawl_single_normalizes_result_payload() -> None:
     adapter._build_run_config = lambda: object()  # type: ignore[method-assign]
 
     result = build_result("https://example.com/docs", ["/more"])
-    page = await adapter._crawl_single(FakeCrawler({"https://example.com/docs": result}), "https://example.com/docs")
+    page = await adapter._crawl_single(
+        FakeCrawler({"https://example.com/docs": result}), "https://example.com/docs"
+    )
 
     assert page.url == "https://example.com/docs"
     assert page.markdown == "# https://example.com/docs"

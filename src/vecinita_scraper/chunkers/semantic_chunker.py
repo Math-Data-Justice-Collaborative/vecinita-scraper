@@ -31,9 +31,7 @@ class SemanticChunker:
         max_tokens = max_tokens_override or config.max_size_tokens
         max_tokens = max(max_tokens, config.min_size_tokens)
         paragraphs = [
-            part.strip()
-            for part in _PARAGRAPH_SPLIT_RE.split(markdown_content)
-            if part.strip()
+            part.strip() for part in _PARAGRAPH_SPLIT_RE.split(markdown_content) if part.strip()
         ]
 
         chunks: list[dict[str, Any]] = []
