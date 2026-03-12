@@ -1,230 +1,141 @@
-# ✅ Deployment Readiness Checklist
+# Deployment Readiness Checklist
 
-Use this checklist to verify everything is ready before deploying to Modal.
+Use this checklist before local or CI deployment.
 
-## Pre-Deployment Checklist
+## Environment and Auth
 
-### Environment Setup
-- [ ] Modal CLI installed
-  ```bash
-  which modal && modal --version
-  ```
-  Expected: `/path/to/modal` and version info
-
-- [ ] `.env` file exists and is configured
-  ```bash
-  ls -la .env
-  ```
-  Expected: File exists with Supabase and embedding API variables
-
-- [ ] `.env` is in `.gitignore` (for security)
-  ```bash
-  grep ".env" .gitignore
-  ```
-  Expected: `.env` listed in .gitignore
-
-### Modal Authentication  
-- [ ] Modal credentials exist
-  ```bash
-  ls -la ~/.modal/
-  ```
-  Expected: Files `token_id` and `token_secret` present
-  
-  If missing:
-  ```bash
-  modal auth login
-  ```
-
-### Code Quality
-- [ ] All tests pass
-  ```bash
-  pytest tests/ -v
-  ```
-  Expected: 
-  - Unit tests: ✓ (14 passing)
-  - API tests: ✓ (16 passing)
-  - Integration tests: ✓ (5 passing)
-  - **Total: 35 tests passing**
-
-- [ ] Linting passes
-  ```bash
-  ruff check src/ tests/
-  ```
-  Expected: No errors (warnings OK)
-
-- [ ] Type checking passes
-  ```bash
-  mypy src/ --ignore-missing-imports
-  ```
-  Expected: Success or acceptable warnings
-
-### Code Structure Verification
-- [ ] Workers Modal app exists
-  ```bash
-  test -f src/vecinita_scraper/app.py && echo "✓ Found"
-  ```
-  Expected: ✓ Found
-
-- [ ] API Modal app exists
-  ```bash
-  test -f src/vecinita_scraper/api/app.py && echo "✓ Found"
-  ```
-  Expected: ✓ Found
-
-- [ ] FastAPI server exists
-  ```bash
-  test -f src/vecinita_scraper/api/server.py && echo "✓ Found"
-  ```
-  Expected: ✓ Found
-
-### Configuration Files
-- [ ] GitHub Actions workflow exists
-  ```bash
-  test -f .github/workflows/ci-cd.yml && echo "✓ Found"
-  ```
-  Expected: ✓ Found
-
-- [ ] Deployment script exists and is executable
-  ```bash
-  test -x scripts/deploy.sh && echo "✓ Executable"
-  ```
-  Expected: ✓ Executable
-
-- [ ] Makefile has deploy targets
-  ```bash
-  grep "deploy:" Makefile
-  ```
-  Expected: Deploy commands present
-
-### Documentation
-- [ ] DEPLOYMENT.md exists
-  ```bash
-  test -f DEPLOYMENT.md && echo "✓ Found"
-  ```
-  Expected: ✓ Found
-
-- [ ] QUICKSTART.md exists
-  ```bash
-  test -f QUICKSTART.md && echo "✓ Found"
-  ```
-  Expected: ✓ Found
-
-- [ ] README.md has deployment info
-  ```bash
-  grep -i "deployment\|modal" README.md
-  ```
-  Expected: Deployment documentation present
-
-## Local Deployment Test
-
-Before GitHub Actions automation, test locally:
+- [ ] Modal CLI available
 
 ```bash
-# 1. Verify environment
-echo "Modal:" && which modal && modal --version
-echo "Python:" && python --version
-echo ".env:" && test -f .env && echo "✓ Found"
-
-# 2. Run tests
-pytest tests/ -q
-
-# 3. Deploy to Modal (if tests pass)
-./scripts/deploy.sh
-# OR manually:
-export PYTHONPATH=src
-modal deploy src/vecinita_scraper/app.py
-modal deploy src/vecinita_scraper/api/app.py
+which modal && modal --version
 ```
 
-Expected output:
-```
-✓ Modal deployed to ...
-✓ API deployed to ...
-```
-
-## GitHub Actions Setup
-
-For automatic CI/CD, add secrets to GitHub:
+- [ ] Modal authentication is configured (`modal auth login` or token env vars)
 
 ```bash
-# Go to: GitHub Settings → Secrets and variables → Actions
-# Add these secrets from your local .env:
+ls -la ~/.modal/
 ```
 
-Required secrets:
-- [ ] `MODAL_TOKEN_ID`
-- [ ] `MODAL_TOKEN_SECRET`
+- [ ] `.env` exists and is aligned with `.env.example`
+
+```bash
+test -f .env && echo ".env present"
+```
+
+- [ ] `.env` is ignored by git
+
+```bash
+grep -n "^\.env$" .gitignore
+```
+
+## Required Runtime Variables
+
 - [ ] `SUPABASE_PROJECT_URL`
 - [ ] `SUPABASE_ANON_KEY`
 - [ ] `SUPABASE_SERVICE_KEY`
 - [ ] `VECINITA_EMBEDDING_API_URL`
 
-Once secrets are added:
+If proxy auth is enabled:
+
+- [ ] `MODAL_AUTH_KEY`
+- [ ] `MODAL_AUTH_SECRET`
+
+## Quality Gates
+
+- [ ] Lint passes
+
 ```bash
-git push origin main
+make lint
 ```
 
-Check deployment:
-- [ ] GitHub Actions workflow triggers
-- [ ] All tests pass (logs available in Actions tab)
-- [ ] Apps deploy to Modal successfully
-- [ ] Apps appear in Modal dashboard
-
-## Post-Deployment Verification
-
-After deployment:
+- [ ] Type checks pass
 
 ```bash
-# View deployed apps
+make type-check
+```
+
+- [ ] Tests pass
+
+```bash
+make test
+```
+
+Current expected totals:
+
+- 16 unit
+- 18 API
+- 5 integration
+- 39 total
+
+## Deploy Commands
+
+- [ ] Workers deploy command succeeds
+
+```bash
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/app.py
+```
+
+- [ ] API deploy command succeeds
+
+```bash
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/api/app.py
+```
+
+Equivalent convenience command:
+
+```bash
+make deploy
+```
+
+## Post-Deploy Validation
+
+- [ ] Modal apps are visible
+
+```bash
 modal app list
-
-# Check app status
-modal app info vecinita-scraper
-modal app info vecinita-scraper-api
-
-# View logs
-modal logs -f vecinita-scraper
-modal logs -f vecinita-scraper-api
-
-# Test API (if deployed successfully)
-curl https://YOUR_API_URL/docs
 ```
 
-Expected:
-- [ ] Both apps visible in Modal dashboard
-- [ ] Workers app processing tasks
-- [ ] API app serving requests
-- [ ] Logs show no critical errors
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Modal not found | `pip install --upgrade modal` |
-| Auth fails | `modal auth login` or set env vars |
-| Tests fail | Check `.env` and logs, verify dependencies |
-| Deployment fails | Review Modal logs: `modal logs <app>` |
-| GitHub Actions fails | Add missing secrets, check workflow syntax |
-
-## Quick Reference
+- [ ] Health endpoint returns 200
 
 ```bash
-# Copy this and run to verify everything
-echo "=== Deployment Checklist ===" && \
-which modal && modal --version && echo "✓ Modal CLI" && \
-test -f .env && echo "✓ .env exists" && \
-test -f src/vecinita_scraper/app.py && echo "✓ Workers app" && \
-test -f src/vecinita_scraper/api/app.py && echo "✓ API app" && \
-test -f .github/workflows/ci-cd.yml && echo "✓ GitHub Actions" && \
-test -x scripts/deploy.sh && echo "✓ Deploy script" && \
-echo "" && echo "=== Credentials ===" && \
-ls -la ~/.modal/ 2>/dev/null && echo "✓ Modal auth" || echo "✗ Modal auth needed: modal auth login" && \
-echo "" && echo "=== Ready to deploy! ===" && \
-echo "Next: ./scripts/deploy.sh"
+curl https://<api-base-url>/health
 ```
 
----
+- [ ] Protected jobs endpoint enforces auth (when enabled)
 
-**Status Check:** Run the quick reference command to verify all prerequisites.
+```bash
+curl https://<api-base-url>/jobs
+curl https://<api-base-url>/jobs \
+  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
+  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET"
+```
 
-**Next Step:** Follow [QUICKSTART.md](QUICKSTART.md) to deploy!
+## GitHub Actions (CI/CD)
+
+Workflow file: `.github/workflows/ci-cd.yml`
+
+- [ ] Repository secrets configured:
+  - `MODAL_TOKEN_ID`
+  - `MODAL_TOKEN_SECRET`
+  - `SUPABASE_PROJECT_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_KEY`
+  - `VECINITA_EMBEDDING_API_URL`
+
+Verify quickly:
+
+```bash
+gh secret list
+```
+
+## API Contract Sanity
+
+- [ ] Endpoint set matches implementation:
+  - `POST /jobs`
+  - `GET /jobs/{job_id}`
+  - `GET /jobs`
+  - `POST /jobs/{job_id}/cancel`
+  - `GET /health`
+  - `GET /docs`
+
+- [ ] Request/response schema docs are up-to-date in `README.md`

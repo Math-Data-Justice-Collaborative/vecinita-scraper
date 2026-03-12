@@ -1,198 +1,138 @@
-# 🚀 Quick Start: Modal Deployment
+# Quick Start: Modal Deployment
 
-## Step 1: Authenticate with Modal
+This guide gets you from clone to deployed app quickly with commands that match the current repository state.
 
-If you haven't authenticated with Modal yet, run:
+## 1) Authenticate With Modal
 
 ```bash
 modal auth login
 ```
 
-This will:
-- Open a browser to Modal's authentication page
-- Create a token for your account
-- Save credentials to `~/.modal/token_id` and `~/.modal/token_secret`
-
-**Alternative: Use Environment Variables**
-
-If you're in an environment where browser login isn't possible (e.g., CI/CD):
+Alternative for non-interactive environments:
 
 ```bash
 export MODAL_TOKEN_ID="your-token-id"
 export MODAL_TOKEN_SECRET="your-token-secret"
 ```
 
-Get your token from: https://modal.com/account/tokens
-
-## Step 2: Configure Environment Variables
-
-Create a `.env` file in the project root with required secrets:
+## 2) Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in:
-- `SUPABASE_PROJECT_URL` - Your Supabase project URL
-- `SUPABASE_ANON_KEY` - Supabase anonymous key
-- `SUPABASE_SERVICE_KEY` - Supabase service role key (for secure operations)
-- `VECINITA_EMBEDDING_API_URL` - Your embedding API endpoint
+Required values in `.env`:
 
-> ⚠️ **Never commit `.env` to version control!** It's in `.gitignore`.
+- `SUPABASE_PROJECT_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `VECINITA_EMBEDDING_API_URL`
+- `MODAL_AUTH_KEY` and `MODAL_AUTH_SECRET` if API proxy auth is enabled
 
-## Step 3: Deploy Locally
-
-Test deployment on your machine:
+## 3) Install and Test
 
 ```bash
-# Option A: Use the deployment script
-./scripts/deploy.sh
-
-# Option B: Manual deployment
-export PYTHONPATH=src
-pytest tests/unit tests/integration  # Verify tests pass
-modal deploy src/vecinita_scraper/app.py
-modal deploy src/vecinita_scraper/api/app.py
+make dev-install
+make lint
+make type-check
+make test
 ```
 
-The script will:
-1. ✓ Verify Modal credentials exist
-2. ✓ Load environment from `.env`
-3. ✓ Run all unit and integration tests
-4. ✓ Deploy workers app to Modal
-5. ✓ Deploy API app to Modal
+Current test inventory: 39 total (`16 unit`, `18 API`, `5 integration`).
 
-## Step 4: Set Up GitHub Actions (Optional)
+## 4) Deploy
 
-For automatic deployment on every push to main:
+Fast path:
 
-1. Go to your GitHub repository
-2. Navigate to **Settings → Secrets and variables → Actions**
-3. Add these secrets:
-
-| Secret Name | Value |
-|---|---|
-| `MODAL_TOKEN_ID` | Token ID from Modal account |
-| `MODAL_TOKEN_SECRET` | Token secret from Modal account |
-| `SUPABASE_PROJECT_URL` | From your `.env` |
-| `SUPABASE_ANON_KEY` | From your `.env` |
-| `SUPABASE_SERVICE_KEY` | From your `.env` |
-| `VECINITA_EMBEDDING_API_URL` | From your `.env` |
-
-Once secrets are added:
 ```bash
-git push origin main
+make deploy
 ```
 
-GitHub Actions will automatically:
-- Run all tests
-- Deploy both apps to Modal (if tests pass)
-- Provide deployment logs
-
-## Step 5: Verify Deployment
-
-Check if apps are deployed:
+Manual equivalent:
 
 ```bash
-# List all deployed apps
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/app.py
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/api/app.py
+```
+
+## 5) Verify
+
+```bash
 modal app list
-
-# View logs
-modal logs vecinita-scraper
-modal logs vecinita-scraper-api
-
-# Check status
-modal status
-
-# Get app URLs
 modal app info vecinita-scraper
 modal app info vecinita-scraper-api
 ```
 
-## Common Commands
+Smoke checks:
 
 ```bash
-# Deploy just the workers
-modal deploy src/vecinita_scraper/app.py
+# Public health endpoint
+curl https://<api-base-url>/health
 
-# Deploy just the API
-modal deploy src/vecinita_scraper/api/app.py
-
-# Run tests
-pytest tests/ -v
-
-# View recent deployments
-modal deployment list
-
-# Tail logs from an app
-modal logs -f vecinita-scraper-api
-
-# Stop an app
-modal app stop vecinita-scraper
-modal app stop vecinita-scraper-api
+# Protected endpoint (when proxy auth enabled)
+curl https://<api-base-url>/jobs \
+  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
+  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET"
 ```
+
+## API Endpoints (Current)
+
+- `POST /jobs` - Submit a scraping job
+- `GET /jobs/{job_id}` - Get job status
+- `GET /jobs` - List jobs (currently placeholder list response)
+- `POST /jobs/{job_id}/cancel` - Cancel a job
+- `GET /health` - Health check (public)
+- `GET /docs` - OpenAPI Swagger UI (public)
+
+## GitHub Actions Setup
+
+Workflow file: `.github/workflows/ci-cd.yml`
+
+Required repository secrets for deploy job:
+
+- `MODAL_TOKEN_ID`
+- `MODAL_TOKEN_SECRET`
+- `SUPABASE_PROJECT_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `VECINITA_EMBEDDING_API_URL`
+
+Trigger behavior:
+
+- Tests run on push and pull request to `main`
+- Deploy runs on push to `main` after tests
 
 ## Troubleshooting
 
-### Modal command not found
-```bash
-# Install or upgrade Modal
-pip install --upgrade modal
+### Modal CLI not found
 
-# Verify installation
-which modal
+```bash
+pip install --upgrade modal
 modal --version
 ```
 
-### Authentication fails
+### Auth errors
+
 ```bash
-# Re-authenticate
-rm -rf ~/.modal
 modal auth login
 ```
 
-### Deployment fails - "No credentials found"
-- Check: `ls -la ~/.modal/` should have `token_id` and `token_secret`
-- Or: Set `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` environment variables
-- Get tokens from: https://modal.com/account/tokens
+### Deployment auth token missing in CI
 
-### Tests fail before deployment
-- Review test output and error messages
-- Check `.env` has all required variables
-- Ensure Supabase project is accessible
+Confirm GitHub secrets exist:
 
-## Architecture
+```bash
+gh secret list
+```
 
-The project has two separate Modal apps:
+### Test failures
 
-**1. Workers App** (`src/vecinita_scraper/app.py`)
-- Runs scraping tasks asynchronously
-- Uses Modal queues for task distribution
-- Integrates Crawl4AI, Docling, and semantic chunking
+```bash
+make test
+```
 
-**2. API App** (`src/vecinita_scraper/api/app.py`)
-- Serves REST API endpoints
-- FastAPI application wrapped in Modal ASGI
-- Provides endpoints for:
-  - `POST /scrape` - Scrape URLs asynchronously
-  - `GET /results/{task_id}` - Fetch scraping results
-  - `GET /status/{task_id}` - Check task status
-  - `GET /docs` - Swagger documentation
+## Next Reads
 
-## Documentation
-
-For more details, see:
-- [DEPLOYMENT.md](../DEPLOYMENT.md) - Comprehensive deployment guide
-- [Modal Documentation](https://modal.com/docs)
-- [FastAPI Documentation](https://fastapi.tiangolo.com)
-
-## Need Help?
-
-- Check logs: `modal logs -f <app-name>`
-- Review GitHub Actions: https://github.com/YOUR_REPO/actions
-- Read error messages carefully
-- See [DEPLOYMENT.md](../DEPLOYMENT.md) troubleshooting section
-
----
-
-**Ready to deploy?** Start with Step 1 above!
+- [README.md](README.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [QUICKREF.md](QUICKREF.md)

@@ -1,330 +1,201 @@
-# 🚀 Deployment Quick Reference
+# Deployment Quick Reference
 
-## TL;DR - Get Running in 3 Steps
+## Fast Path
 
-### Step 1: Authenticate (5 min)
 ```bash
 modal auth login
-```
-
-### Step 2: Test & Deploy (10 min)
-```bash
-./scripts/deploy.sh
-```
-
-### Step 3: Verify (5 min)
-```bash
-modal app list
-```
-
----
-
-## Common Commands
-
-### Viewing & Monitoring
-```bash
-# List all deployed apps
-modal app list
-
-# Get app details
-modal app info vecinita-scraper
-modal app info vecinita-scraper-api
-
-# View live logs
-modal logs -f vecinita-scraper
-modal logs -f vecinita-scraper-api
-
-# View deployment history
-modal deployment list
-
-# Check app status
-modal status
-```
-
-### Deployment
-```bash
-# Deploy everything (with tests)
-./scripts/deploy.sh
-
-# Deploy just workers app
-PYTHONPATH=src modal deploy src/vecinita_scraper/app.py
-
-# Deploy just API app
-PYTHONPATH=src modal deploy src/vecinita_scraper/api/app.py
-
-# Using Makefile
+cp .env.example .env
+make dev-install
+make test
 make deploy
 ```
 
-### Testing
+## Core Commands
+
+### Development
+
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test suite
-pytest tests/unit -v
-pytest tests/api -v
-pytest tests/integration -v
-
-# Run with coverage
-pytest tests/ --cov=src
+make lint
+make type-check
+make test
+make test-unit
+make test-integration
+make test-live
 ```
 
-### Credentials
+### Deployment
+
 ```bash
-# Setup authentication
-modal auth login
+# Deploy both workers + API
+make deploy
 
-# Reset credentials
-rm -rf ~/.modal
-modal auth login
+# Deploy workers only
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/app.py
 
-# Check token status
-ls -la ~/.modal/
+# Deploy API only
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/api/app.py
+
+# Serve API locally with Modal
+make serve
 ```
 
-### Environment
+### Modal Observability
+
 ```bash
-# Create .env from template
-cp .env.example .env
-
-# Verify environment is loaded
-export $(cat .env | xargs)
-
-# Check Modal CLI version
-modal --version
+modal app list
+modal app info vecinita-scraper
+modal app info vecinita-scraper-api
+modal logs -f vecinita-scraper
+modal logs -f vecinita-scraper-api
 ```
 
----
+## Current API Contract
 
-## GitHub Actions (CI/CD)
+Base path: `/jobs`
 
-### One-Time Setup
-1. Go to: **GitHub Repo → Settings → Secrets and variables → Actions**
-2. Add these GitHub Secrets:
-   ```
-   MODAL_TOKEN_ID=<from your account>
-   MODAL_TOKEN_SECRET=<from your account>
-   SUPABASE_PROJECT_URL=<from .env>
-   SUPABASE_ANON_KEY=<from .env>
-   SUPABASE_SERVICE_KEY=<from .env>
-   VECINITA_EMBEDDING_API_URL=<from .env>
-   ```
+- `POST /jobs`
+- `GET /jobs/{job_id}`
+- `GET /jobs`
+- `POST /jobs/{job_id}/cancel`
 
-### Automatic Deployment
-```bash
-# Just push to main - everything happens automatically!
-git push origin main
+Public endpoints:
+
+- `GET /health`
+- `GET /docs`
+- `GET /redoc`
+- `GET /openapi.json`
+
+## Auth Headers (Protected Endpoints)
+
+```http
+x-modal-auth-key: <MODAL_AUTH_KEY>
+x-modal-auth-secret: <MODAL_AUTH_SECRET>
 ```
 
-Workflow runs:
-1. Tests all code
-2. Deploys to Modal if tests pass
-3. Provides deployment log
+Auth is enforced when:
 
-### Monitor Workflow
-- Go to: **GitHub Repo → Actions tab**
-- Click on latest workflow run
-- View logs and deployment status
+- `MODAL_PROXY_AUTH_ENABLED=true`
+- both `MODAL_AUTH_KEY` and `MODAL_AUTH_SECRET` are configured
 
----
+## API Request/Response Shape (Quick)
+
+### Submit Job
+
+`POST /jobs`
+
+Request body:
+
+```json
+{
+    "url": "https://example.com",
+    "user_id": "user-123",
+    "crawl_config": {
+        "max_depth": 3,
+        "timeout_seconds": 60
+    },
+    "chunking_config": {
+        "min_size_tokens": 256,
+        "max_size_tokens": 1024,
+        "overlap_ratio": 0.2
+    },
+    "metadata": {
+        "source": "quickref"
+    }
+}
+```
+
+Response (`201`):
+
+```json
+{
+    "job_id": "...",
+    "status": "pending",
+    "created_at": "...",
+    "url": "https://example.com/"
+}
+```
+
+### Get Job Status
+
+`GET /jobs/{job_id}`
+
+Response (`200`):
+
+```json
+{
+    "job_id": "...",
+    "status": "crawling",
+    "progress_pct": 20,
+    "current_step": "crawling",
+    "error_message": null,
+    "updated_at": "...",
+    "created_at": "...",
+    "crawl_url_count": 0,
+    "chunk_count": 0,
+    "embedding_count": 0
+}
+```
+
+### Cancel Job
+
+`POST /jobs/{job_id}/cancel`
+
+Response (`200`):
+
+```json
+{
+    "job_id": "...",
+    "previous_status": "pending",
+    "new_status": "cancelled"
+}
+```
+
+## Test Inventory
+
+- 16 unit tests
+- 18 API tests
+- 5 integration tests
+- 39 total
+
+## GitHub Actions Secrets
+
+Workflow: `.github/workflows/ci-cd.yml`
+
+Required for deploy job:
+
+- `MODAL_TOKEN_ID`
+- `MODAL_TOKEN_SECRET`
+- `SUPABASE_PROJECT_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `VECINITA_EMBEDDING_API_URL`
 
 ## Troubleshooting
 
-### "modal: command not found"
-```bash
-pip install --upgrade modal
-```
+### Missing Modal auth
 
-### "Error: No credentials found"
 ```bash
 modal auth login
-# OR set environment variables:
-export MODAL_TOKEN_ID=your-token
-export MODAL_TOKEN_SECRET=your-secret
 ```
 
-### "Tests failing"
-```bash
-# Check environment
-cat .env
-
-# Run tests with verbose output
-pytest tests/ -v --tb=long
-
-# Check dependencies
-pip install -r requirements.txt
-```
-
-### "Deployment stuck"
-```bash
-# View logs
-modal logs -f vecinita-scraper
-
-# Check app status
-modal status
-
-# Force stop and redeploy
-modal app stop vecinita-scraper
-./scripts/deploy.sh
-```
-
-### "GitHub Actions failing"
-1. Check all 6 secrets are set correctly
-2. Verify .env is in .gitignore
-3. Review Actions tab logs
-4. Ensure local deployment works first
-
----
-
-## Infrastructure Endpoints
-
-After deployment, your apps are available at:
-
-### Workers App
-- **Name:** `vecinita-scraper`
-- **Type:** Modal background worker
-- **Tasks:** URL scraping, processing, chunking, embedding
-- **Logs:** `modal logs -f vecinita-scraper`
-
-### API App  
-- **Name:** `vecinita-scraper-api`
-- **Type:** Modal ASGI (FastAPI)
-- **Base URL:** `https://your-workspace.modal.run/vecinita-scraper-api`
-- **Endpoints:**
-  - `GET /` - Welcome page
-  - `GET /docs` - Swagger documentation
-  - `GET /health` - Health check
-  - `POST /submit_job` - Submit scraping job
-  - `GET /job/{job_id}/status` - Check job status
-  - `GET /job/{job_id}/results` - Get results
-  - `POST /job/{job_id}/cancel` - Cancel job
-- **Logs:** `modal logs -f vecinita-scraper-api`
-
----
-
-## File Locations
-
-```
-Project Structure:
-├── src/vecinita_scraper/
-│   ├── app.py                 ← Workers Modal app
-│   ├── api/
-│   │   ├── app.py            ← API Modal wrapper
-│   │   └── server.py         ← FastAPI server
-│   └── [core modules]
-├── scripts/
-│   └── deploy.sh             ← Deployment script
-├── .github/workflows/
-│   └── ci-cd.yml             ← GitHub Actions
-├── .env                       ← Your secrets (in .gitignore)
-├── .env.example               ← Template
-├── QUICKSTART.md              ← Getting started
-├── DEPLOYMENT.md              ← Full guide
-├── DEPLOYMENT_CHECKLIST.md    ← Verification
-└── DEPLOYMENT_STATUS.md       ← This status report
-```
-
----
-
-## Documentation Map
-
-| Document | Purpose | When to Read |
-|----------|---------|--------------|
-| **This page** | Quick reference | Everyday use |
-| [QUICKSTART.md](QUICKSTART.md) | Step-by-step setup | Getting started |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Comprehensive guide | Deep dive |
-| [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) | Verification | Before deploying |
-| [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md) | Project status | Overview |
-
----
-
-## Quick Health Check
-
-Verify everything is working:
+### CI deployment token errors
 
 ```bash
-cd /root/GitHub/VECINA/vecinita-scraper
-
-# Check CLI
-which modal && modal --version
-
-# Check files
-ls -la .env src/vecinita_scraper/app.py src/vecinita_scraper/api/app.py
-
-# Check tests
-pytest tests/ -q
-
-# Check credentials
-ls -la ~/.modal/
-
-# Check GitHub Actions
-ls -la .github/workflows/ci-cd.yml
+gh secret list
 ```
 
-Expected output:
-```
-✓ Modal CLI installed (v1.3.4+)
-✓ All files exist
-✓ 35 tests passing
-✓ Credentials configured (or "Not set up yet")
-✓ GitHub Actions workflow exists
-```
+### Run the same checks as CI
 
----
-
-## Deployment Timeline
-
-```
-Just Authenticated?
-    ↓
-    Deploy Locally: ./scripts/deploy.sh (10 min)
-    ↓
-Tests Passing + Apps Running?
-    ↓
-    Set GitHub Secrets (5 min)
-    ↓
-    Push to main (automatic deployment)
-    ↓
-Check GitHub Actions (5 min)
-    ↓
-✅ All Done! Apps auto-deploy on every push
+```bash
+ruff check src/ tests/
+black --check src/ tests/
+pytest tests/unit/ -v --tb=short
+pytest tests/integration/ -v --tb=short
 ```
 
----
+## See Also
 
-## Need Help?
-
-1. **Quick question?** Check this file
-2. **Setup help?** See [QUICKSTART.md](QUICKSTART.md)
-3. **Detailed info?** Read [DEPLOYMENT.md](DEPLOYMENT.md)
-4. **Checking status?** Use the checklist [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)
-5. **Project overview?** See [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md)
-
----
-
-## Pro Tips
-
-✨ **Best Practices:**
-- Always run tests locally first
-- Use `.env` for sensitive data (never push)
-- Check logs after deployment
-- Test API endpoints in Swagger at `/docs`
-- Monitor GitHub Actions on every push
-- Keep Modal credentials secure
-
-⚡ **Speed Tips:**
-- Use `make deploy` for quick deployment
-- Use `./scripts/deploy.sh` for full process
-- Watch logs with `modal logs -f <app-name>`
-- Monitor with `modal status`
-
-🔒 **Security Tips:**
-- Never commit `.env` file
-- Rotate Modal tokens regularly
-- Use GitHub Secrets for CI/CD
-- Keep Modal CLI updated
-
----
-
-**Ready?** Run `modal auth login` → `./scripts/deploy.sh` → Done! 🚀
+- [README.md](README.md)
+- [QUICKSTART.md](QUICKSTART.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)

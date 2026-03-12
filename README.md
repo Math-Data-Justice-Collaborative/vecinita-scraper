@@ -2,218 +2,362 @@
 
 [![CI/CD - Deploy to Modal](https://github.com/Math-Data-Justice-Collaborative/vecinita-scraper/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Math-Data-Justice-Collaborative/vecinita-scraper/actions/workflows/ci-cd.yml)
 
-A serverless web scraping pipeline with job queue management on Modal.
+Serverless web scraping pipeline on Modal with a FastAPI control plane, queue-driven workers, and Supabase-backed job state.
 
 ## Features
 
-- **Distributed Job Queue**: Scalable architecture with Modal job queues
-- **Multi-stage Pipeline**: Crawl → Process → Chunk → Embed → Finalize
-- **Web Crawling**: Breadth-first site crawling with Crawl4AI
-- **Document Processing**: HTML/PDF/DOCX processing with Docling
-- **Semantic Chunking**: Token-aware text chunking for optimal embeddings
-- **Embedding Integration**: Adaptive batch embedding with latency-based tuning
-- **REST API**: FastAPI endpoints for job submission and status tracking
-- **CI/CD**: Automatic deployment to Modal on push to main
+- Distributed queue-based worker pipeline (scrape -> process -> chunk -> embed -> store)
+- FastAPI job API with validation via Pydantic models
+- Modal deployment for workers and API app
+- Supabase-backed job lifecycle tracking
+- CI/CD deployment on push to `main`
 
 ## Quick Start
 
-### Local Development
-
 ```bash
-# Install dependencies
+# Install
 make dev-install
 
-# Run tests
+# Run test suite (non-live)
 make test
 
-# Serve locally
+# Local modal serve (API)
 make serve
-```
 
-### Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
-
-**Quick deploy:**
-```bash
-modal auth login  # Authenticate with Modal
+# Deploy both apps
+modal auth login
 make deploy
 ```
 
-## Architecture
+## System Architecture
 
-```
-┌─────────────────┐
-│   REST API      │  POST /jobs → Create job
-│   (FastAPI)     │  GET /jobs/{id} → Check status
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Job Database   │  Supabase PostgreSQL
-│  (Supabase)     │  Tracks job progress
-└─────────────────┘
+```text
+REST API (FastAPI)
+  POST /jobs            -> enqueue scrape job
+  GET  /jobs/{job_id}   -> read job status
+  GET  /jobs            -> list jobs (placeholder response)
+  POST /jobs/{job_id}/cancel -> cancel job
 
-┌──────────────────────────────────────────────┐
-│          Modal Worker Pipeline               │
-├──────────────────────────────────────────────┤
-│                                              │
-│  Scraper Worker      Crawl4AI                │
-│  ↓ scrape-jobs       ↓ BFS crawl             │
-│  ↓ process-jobs                              │
-│                                              │
-│  Processor Worker    Docling                 │
-│  ↓ chunk-jobs        ↓ HTML/PDF → Markdown   │
-│                                              │
-│  Chunker Worker      SemanticChunker         │
-│  ↓ embed-jobs        ↓ Token-aware split     │
-│                                              │
-│  Embedder Worker     EmbeddingClient         │
-│  ↓ store-jobs        ↓ Batch embed           │
-│                                              │
-│  Finalizer Worker    JobStatus               │
-│  ↓ COMPLETED         ↓ Mark complete         │
-│                                              │
-└──────────────────────────────────────────────┘
+        |
+        v
+Supabase job records + Modal queues
+  scrape-jobs -> process-jobs -> chunk-jobs -> embed-jobs -> store-jobs
 ```
 
-## API Endpoints
+## API Reference
 
-### Submit a Job
+Base path for job routes: `/jobs`
+
+### Authentication
+
+When proxy auth is enabled (`MODAL_PROXY_AUTH_ENABLED=true` and both secrets present), protected endpoints require:
+
+- `x-modal-auth-key: <MODAL_AUTH_KEY>`
+- `x-modal-auth-secret: <MODAL_AUTH_SECRET>`
+
+Public (auth-exempt) endpoints:
+
+- `GET /health`
+- `GET /docs`
+- `GET /redoc`
+- `GET /openapi.json`
+
+### Data Models
+
+#### `ScrapeJobRequest` (POST `/jobs` body)
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `url` | string (http/https URL) | Yes | Must be a valid HTTP or HTTPS URL |
+| `user_id` | string | Yes | Minimum length 1 |
+| `crawl_config` | object (`CrawlConfig`) | No | Uses defaults when omitted |
+| `chunking_config` | object (`ChunkingConfig`) | No | Uses defaults when omitted |
+| `llm_extraction_prompt` | string | No | Optional custom extraction prompt |
+| `metadata` | object | No | Arbitrary key/value metadata |
+
+#### `CrawlConfig`
+
+| Field | Type | Default | Constraints |
+|---|---|---|---|
+| `max_depth` | integer | `3` | `1 <= max_depth <= 10` |
+| `timeout_seconds` | integer | `60` | `10 <= timeout_seconds <= 600` |
+| `headless` | boolean | `true` | Browser mode |
+| `wait_for_content` | boolean | `true` | Wait for dynamic page content |
+| `include_links` | boolean | `true` | Include link extraction |
+| `include_images` | boolean | `false` | Include image extraction |
+
+#### `ChunkingConfig`
+
+| Field | Type | Default | Constraints |
+|---|---|---|---|
+| `min_size_tokens` | integer | `256` | `min_size_tokens >= 100` |
+| `max_size_tokens` | integer | `1024` | `max_size_tokens >= 200` |
+| `overlap_ratio` | number | `0.2` | `0.0 <= overlap_ratio <= 0.5` |
+| `split_by_sentence` | boolean | `true` | Sentence boundary splitting |
+
+#### `JobStatus` enum
+
+Pipeline progression:
+
+`pending -> validating -> crawling -> extracting -> processing -> chunking -> embedding -> storing -> completed`
+
+Terminal/error states:
+
+`failed`, `cancelled`
+
+#### Additional core models
+
+| Model | Purpose |
+|---|---|
+| `CrawledURLData` | Captures crawled URL content and crawl status |
+| `ExtractedContentData` | Stores raw extracted document content before processing |
+| `ProcessedDocumentData` | Stores normalized markdown/doc output from processing |
+| `ChunkData` | Represents semantic chunks with position and token counts |
+| `EmbeddingData` | Represents embeddings for chunks with model metadata |
+| `ChunkWithEmbedding` | Chunk payload plus embedding used for retrieval/search flows |
+| `EmbeddingModelConfig` | Embedding model metadata (`dimensions`, `batch_size`, etc.) |
+
+#### Queue payload models
+
+| Model | Queue |
+|---|---|
+| `ScrapeJobQueueData` | `scrape-jobs` |
+| `ProcessJobQueueData` | `process-jobs` |
+| `ChunkJobQueueData` | `chunk-jobs` |
+| `EmbedJobQueueData` | `embed-jobs` |
+| `StoreJobQueueData` | `store-jobs` |
+
+### Endpoints
+
+#### `POST /jobs`
+
+Submit a new scrape job.
+
+Example request:
+
 ```bash
 curl -X POST http://localhost:8000/jobs \
   -H "Content-Type: application/json" \
-  -H "X-Modal-Auth-Key: $MODAL_AUTH_KEY" \
-  -H "X-Modal-Auth-Secret: $MODAL_AUTH_SECRET" \
+  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
+  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET" \
   -d '{
     "url": "https://example.com",
     "user_id": "user-123",
     "crawl_config": {
       "max_depth": 2,
-      "timeout_seconds": 60
+      "timeout_seconds": 120
+    },
+    "chunking_config": {
+      "min_size_tokens": 256,
+      "max_size_tokens": 1024,
+      "overlap_ratio": 0.2
+    },
+    "metadata": {
+      "source": "readme-example"
     }
   }'
-
-# Response:
-# {
-#   "job_id": "550e8400-e29b-41d4-a716-446655440000",
-#   "status": "pending",
-#   "created_at": "2026-03-12T10:00:00"
-# }
 ```
 
-### Check Job Status
+Success response (`201`):
+
+```json
+{
+  "job_id": "test-job-id-123",
+  "status": "pending",
+  "created_at": "2026-03-12T10:00:00.000000",
+  "url": "https://example.com/"
+}
+```
+
+Common errors:
+
+- `422` validation error (invalid URL, missing `user_id`, invalid config bounds)
+- `500` internal/database error
+
+#### `GET /jobs/{job_id}`
+
+Get current job status.
+
+Example request:
+
 ```bash
-curl http://localhost:8000/jobs/550e8400-e29b-41d4-a716-446655440000 \
-  -H "X-Modal-Auth-Key: $MODAL_AUTH_KEY" \
-  -H "X-Modal-Auth-Secret: $MODAL_AUTH_SECRET"
-
-# Response:
-# {
-#   "job_id": "550e8400-e29b-41d4-a716-446655440000",
-#   "status": "crawling",
-#   "progress_pct": 20,
-#   "current_step": "crawling",
-#   "updated_at": "2026-03-12T10:05:00",
-#   "crawl_url_count": 5,
-#   "chunk_count": 0,
-#   "embedding_count": 0
-# }
+curl http://localhost:8000/jobs/<job_id> \
+  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
+  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET"
 ```
 
-### Cancel a Job
+Response (`200`) maps to `JobStatusResponse`:
+
+```json
+{
+  "job_id": "job-123",
+  "status": "crawling",
+  "progress_pct": 20,
+  "current_step": "crawling",
+  "error_message": null,
+  "updated_at": "2026-03-12T10:05:00.000000",
+  "created_at": "2026-03-12T10:00:00.000000",
+  "crawl_url_count": 5,
+  "chunk_count": 0,
+  "embedding_count": 0
+}
+```
+
+Common errors:
+
+- `404` job not found
+- `500` internal/database error
+
+#### `GET /jobs`
+
+List recent jobs with optional filter.
+
+Query params:
+
+- `user_id` (optional string)
+- `limit` (optional integer, default `50`, valid range `1..100`)
+
+Current response shape (`200`):
+
+```json
+{
+  "user_id": null,
+  "limit": 50,
+  "jobs": [],
+  "total": 0
+}
+```
+
+Notes:
+
+- This endpoint currently returns a placeholder list structure.
+- Invalid `limit` returns `422`.
+
+#### `POST /jobs/{job_id}/cancel`
+
+Cancel a non-terminal job.
+
+Example request:
+
 ```bash
-curl -X POST http://localhost:8000/jobs/550e8400-e29b-41d4-a716-446655440000/cancel \
-  -H "X-Modal-Auth-Key: $MODAL_AUTH_KEY" \
-  -H "X-Modal-Auth-Secret: $MODAL_AUTH_SECRET"
-
-# Response:
-# {
-#   "job_id": "550e8400-e29b-41d4-a716-446655440000",
-#   "previous_status": "pending",
-#   "new_status": "cancelled"
-# }
+curl -X POST http://localhost:8000/jobs/<job_id>/cancel \
+  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
+  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET"
 ```
+
+Success response (`200`):
+
+```json
+{
+  "job_id": "job-123",
+  "previous_status": "pending",
+  "new_status": "cancelled"
+}
+```
+
+Common errors:
+
+- `404` job not found
+- `409` cannot cancel terminal state (`completed`, `failed`, `cancelled`)
+- `500` internal/database error
 
 ## Configuration
 
-Environment variables (see `.env.example`):
+Environment variables are defined in `.env.example`.
 
-| Variable | Description | Required |
-|---|---|---|
-| `SUPABASE_PROJECT_URL` | Supabase project URL | Yes |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
-| `SUPABASE_SERVICE_KEY` | Supabase service key | Yes |
-| `VECINITA_EMBEDDING_API_URL` | Embedding API endpoint | Yes |
-| `MODAL_AUTH_KEY` | Proxy auth header key for API requests | Yes (for protected endpoints) |
-| `MODAL_AUTH_SECRET` | Proxy auth header secret for API requests | Yes (for protected endpoints) |
-| `MODAL_PROXY_AUTH_ENABLED` | Enable/disable proxy auth middleware (`true`/`false`) | No |
-| `ENVIRONMENT` | `development`, `staging`, or `production` | No |
+### Required for local/runtime behavior
 
-## Development
+| Variable | Description |
+|---|---|
+| `SUPABASE_PROJECT_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_KEY` | Supabase service key |
+| `VECINITA_EMBEDDING_API_URL` | Embedding API endpoint |
+
+### Required for protected API access
+
+| Variable | Description |
+|---|---|
+| `MODAL_AUTH_KEY` | Expected `x-modal-auth-key` value |
+| `MODAL_AUTH_SECRET` | Expected `x-modal-auth-secret` value |
+
+### Wired in GitHub Actions workflow
+
+| Secret | Used by CI deploy job |
+|---|---|
+| `MODAL_TOKEN_ID` | Yes |
+| `MODAL_TOKEN_SECRET` | Yes |
+| `SUPABASE_PROJECT_URL` | Yes |
+| `SUPABASE_ANON_KEY` | Yes |
+| `SUPABASE_SERVICE_KEY` | Yes |
+| `VECINITA_EMBEDDING_API_URL` | Yes |
+
+### Optional configuration
+
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_PUBLISHABLE_KEY` | Optional client/publishable Supabase key |
+| `MODAL_WORKSPACE` | Workspace naming/context |
+| `MODAL_PROXY_AUTH_ENABLED` | Toggle proxy auth middleware |
+| `VECINITA_MODEL_API_URL` | Optional model API endpoint |
+| `VECINITA_EMBEDDING_API_TOKEN` | Optional auth token for embedding API |
+| `CRAWL4AI_TIMEOUT_SECONDS` | Crawl timeout tuning |
+| `CRAWL4AI_MAX_DEPTH` | Crawl depth tuning |
+| `CHUNK_MIN_SIZE_TOKENS` | Chunk size lower bound tuning |
+| `CHUNK_MAX_SIZE_TOKENS` | Chunk size upper bound tuning |
+| `CHUNK_OVERLAP_RATIO` | Chunk overlap tuning |
+| `LOG_LEVEL` | Logging verbosity |
+| `ENVIRONMENT` | Runtime environment name |
+
+## Development and Testing
 
 ```bash
-# Format code
+# Format
 make format
 
-# Run linter
+# Lint
 make lint
 
-# Type checking
+# Type-check
 make type-check
 
-# All tests
+# Tests
 make test
-
-# Unit tests only
 make test-unit
-
-# Integration tests
 make test-integration
-
-# Coverage report
+make test-live
 make test-cov
-
-# Clean build artifacts
-make clean
 ```
 
-## Testing
+Current automated test inventory:
 
-The project includes:
-- **14 unit tests** - Testing individual components
-- **16 API tests** - Testing REST endpoints
-- **5 integration tests** - Testing full pipeline
+- 16 unit tests
+- 18 API tests
+- 5 integration tests
+- 39 total tests
 
-Run tests with:
+## Deployment
+
+- CI/CD runs on push/PR to `main`.
+- Deployment job runs on push to `main` after tests.
+- Deployment commands are:
+
 ```bash
-make test
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/app.py
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/api/app.py
 ```
 
-## Deployment Status
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment details.
 
-Automatic deployment to Modal happens on every push to `main` branch after tests pass.
+## Additional Documentation
 
-View deployment logs in the [Actions](../../actions) tab.
-
-## Documentation
-
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Complete deployment guide
-- [API Routes](src/vecinita_scraper/api/routes.py) - REST endpoint documentation
-- [Worker Documentation](src/vecinita_scraper/workers/) - Job processing pipeline
-- [Configuration](src/vecinita_scraper/core/config.py) - Configuration options
+- [QUICKSTART.md](QUICKSTART.md) - Fast setup and deploy flow
+- [QUICKREF.md](QUICKREF.md) - Command quick reference
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Full deployment and CI/CD guide
+- [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Readiness checklist
+- [src/vecinita_scraper/core/models.py](src/vecinita_scraper/core/models.py) - Source-of-truth model definitions
+- [src/vecinita_scraper/api/routes.py](src/vecinita_scraper/api/routes.py) - Source-of-truth route implementations
 
 ## License
 
-MIT - See LICENSE file for details
-
-## Contributing
-
-Contributions welcome! Please:
-1. Create a feature branch
-2. Run tests and lint checks
-3. Submit a pull request
-
-## Support
-
-For issues, questions, or suggestions, please open an issue on GitHub.
+MIT. See [LICENSE](LICENSE).

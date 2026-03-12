@@ -1,201 +1,156 @@
 # Deployment Guide
 
-This guide covers deploying the Vecinita Scraper to Modal with GitHub Actions CI/CD.
+This guide documents the current deployment workflow for this repository.
 
 ## Prerequisites
 
-- Modal CLI installed: `pip install modal`
-- Modal account created at https://modal.com
-- GitHub repository with secrets configured
+- Python 3.11+
+- Modal CLI installed (`pip install modal`)
+- Modal account and credentials
+- `.env` configured from `.env.example`
 
-## Local Deployment
+## 1) Authenticate to Modal
 
-### 1. Set up Modal
+Interactive:
 
 ```bash
-# Authenticate with Modal
-modal token new
-
-# This creates credentials at ~/.modal/token_id and ~/.modal/token_secret
+modal auth login
 ```
 
-### 2. Configure Environment Variables
+Non-interactive alternative:
 
-Create a `.env` file in the project root with:
-
-```env
-SUPABASE_PROJECT_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-key
-VECINITA_EMBEDDING_API_URL=https://your-embedding-api.com
+```bash
+export MODAL_TOKEN_ID="your-token-id"
+export MODAL_TOKEN_SECRET="your-token-secret"
 ```
 
-### 3. Deploy Locally
+## 2) Configure Environment
 
-**Deploy workers and queues:**
+```bash
+cp .env.example .env
+```
+
+Required runtime variables:
+
+- `SUPABASE_PROJECT_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `VECINITA_EMBEDDING_API_URL`
+
+Required for protected API access (when proxy auth enabled):
+
+- `MODAL_AUTH_KEY`
+- `MODAL_AUTH_SECRET`
+
+Optional variables are documented in `.env.example`.
+
+## 3) Run Quality Gates Locally
+
+```bash
+make lint
+make type-check
+make test
+```
+
+Current baseline: 39 tests total (`16 unit`, `18 API`, `5 integration`).
+
+## 4) Deploy
+
+Primary command:
+
 ```bash
 make deploy
-# Or manually:
-PYTHONPATH=src python3 -m modal deploy src/vecinita_scraper/app.py
 ```
 
-**Deploy API:**
+Manual equivalent:
+
 ```bash
-PYTHONPATH=src python3 -m modal deploy src/vecinita_scraper/api/app.py
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/app.py
+PYTHONPATH=src python -m modal deploy src/vecinita_scraper/api/app.py
 ```
 
-**Serve locally (for development):**
+Local API serve:
+
 ```bash
 make serve
-# Or manually:
-PYTHONPATH=src python3 -m modal serve src/vecinita_scraper/api/app.py
 ```
 
-## GitHub Actions CI/CD Setup
+## 5) Verify Deployment
 
-### 1. Create Modal Token
+```bash
+modal app list
+modal app info vecinita-scraper
+modal app info vecinita-scraper-api
+```
 
-1. Go to https://modal.com/settings/tokens
-2. Click "Create token"
-3. Copy the token ID and secret
+API checks:
 
-### 2. Add GitHub Secrets
+```bash
+curl https://<api-base-url>/health
+curl https://<api-base-url>/jobs \
+  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
+  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET"
+```
 
-Go to your GitHub repository > Settings > Secrets and variables > Actions
+## GitHub Actions CI/CD
 
-Add the following secrets:
+Workflow file: `.github/workflows/ci-cd.yml`
 
-| Secret Name | Value |
-|---|---|
-| `MODAL_TOKEN_ID` | Your Modal token ID |
-| `MODAL_TOKEN_SECRET` | Your Modal token secret |
-| `SUPABASE_PROJECT_URL` | Your Supabase project URL |
-| `SUPABASE_ANON_KEY` | Your Supabase anon key |
-| `SUPABASE_SERVICE_KEY` | Your Supabase service key (for backend ops) |
-| `VECINITA_EMBEDDING_API_URL` | Your embedding API endpoint |
+Trigger behavior:
 
-### 3. Verify Workflow
+- Test job runs on push and pull request to `main`
+- Deploy job runs on push to `main` after test job
 
-The `.github/workflows/ci-cd.yml` workflow:
-- Runs on every push to `main` branch
-- Runs unit and integration tests
-- Deploys to Modal if tests pass
+Required GitHub repository secrets:
 
-To verify:
-1. Push a commit to `main`
-2. Go to Actions tab in GitHub
-3. Watch the deployment progress
+- `MODAL_TOKEN_ID`
+- `MODAL_TOKEN_SECRET`
+- `SUPABASE_PROJECT_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `VECINITA_EMBEDDING_API_URL`
 
-## Monitoring Deployments
+Monitor runs in GitHub Actions.
 
-### Modal Dashboard
+## API Endpoints (Current)
 
-View your deployed apps at https://modal.com/apps
+- `POST /jobs`
+- `GET /jobs/{job_id}`
+- `GET /jobs`
+- `POST /jobs/{job_id}/cancel`
+- `GET /health`
+- `GET /docs`
 
-**Workers App** - Job processing pipeline
-- View logs: `modal logs`
-- Check status: `modal status`
-
-**API App** - REST endpoints
-- Access at the provided Modal URL
-- Check endpoint: `curl https://your-modal-url/health`
-
-### GitHub Actions
-
-Monitor deployments in the Actions tab of your GitHub repository.
-
-View logs by clicking on completed workflow runs.
+Full request/response schema details are maintained in `README.md`.
 
 ## Troubleshooting
 
-### Deployment Fails
+### Token/authentication errors
 
-Check the GitHub Actions logs for error details.
+- Re-run `modal auth login`
+- Confirm CI secrets with `gh secret list`
 
-Common issues:
-- **Authentication failed**: Verify `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` are correct
-- **Dependency errors**: Ensure all dependencies are in `pyproject.toml`
-- **Env var missing**: Check all `SUPABASE_*` secrets are set
+### Missing environment values
 
-### Tests Failing
+- Check `.env` against `.env.example`
+- Confirm CI secrets match deploy workflow requirements
 
-The workflow will not deploy if tests fail. To debug:
-
-1. Run tests locally: `make test`
-2. Fix any failures
-3. Push to trigger workflow again
-
-### Workers Not Starting
-
-Check Modal logs:
-```bash
-modal logs <app-name>
-```
-
-Ensure all workers are properly imported in `src/vecinita_scraper/app.py`.
-
-## Manual Deployment (Without CI/CD)
-
-If you need to deploy without GitHub Actions:
+### Test failures block deploy
 
 ```bash
-# Export Modal credentials
-export MODAL_TOKEN_ID=your-token-id
-export MODAL_TOKEN_SECRET=your-token-secret
-
-# Export environment variables
-export SUPABASE_PROJECT_URL=...
-export SUPABASE_ANON_KEY=...
-export SUPABASE_SERVICE_KEY=...
-export VECINITA_EMBEDDING_API_URL=...
-
-# Deploy
-make deploy
+make test
 ```
 
-## Environment Configuration
+### Runtime issues
 
-The app reads configuration from environment variables:
-
-- `SUPABASE_PROJECT_URL` - Supabase project URL
-- `SUPABASE_ANON_KEY` - Public API key
-- `SUPABASE_SERVICE_KEY` - Service role key (for backend)
-- `VECINITA_EMBEDDING_API_URL` - Embedding service endpoint
-- `ENVIRONMENT` - "development", "staging", or "production"
-
-See `src/vecinita_scraper/core/config.py` for full configuration details.
-
-## Production Checklist
-
-Before deploying to production:
-
-- [ ] All tests passing locally
-- [ ] Modal credentials set in GitHub Secrets
-- [ ] All environment variables configured
-- [ ] Supabase backup created
-- [ ] Rate limiting configured (if needed)
-- [ ] Monitoring/alerting set up
-- [ ] API documentation reviewed
-- [ ] Error handling tested
-
-## Architecture
-
-```
-GitHub Actions (on push to main)
-  ↓
-Run tests (unit + integration)
-  ↓
-If tests pass:
-  ├─ Deploy workers app → Modal app
-  └─ Deploy API app → Modal web endpoint
-  
-Users access API at: https://<modal-url>/jobs
+```bash
+modal logs -f vecinita-scraper
+modal logs -f vecinita-scraper-api
 ```
 
-## Support
+## Related Docs
 
-For issues:
-1. Check GitHub Actions logs
-2. Check Modal dashboard logs
-3. Review environment variable configuration
-4. Run tests locally to reproduce issues
+- `README.md` (API schema and data model reference)
+- `QUICKSTART.md`
+- `QUICKREF.md`
+- `DEPLOYMENT_CHECKLIST.md`
