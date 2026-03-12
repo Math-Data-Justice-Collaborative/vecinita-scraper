@@ -50,10 +50,12 @@ Base path for job routes: `/jobs`
 
 ### Authentication
 
-When proxy auth is enabled (`MODAL_PROXY_AUTH_ENABLED=true` and both secrets present), protected endpoints require:
+**The FastAPI endpoint now uses Modal Proxy Auth Tokens to protect against unauthorized access.**
 
-- `x-modal-auth-key: <MODAL_AUTH_KEY>`
-- `x-modal-auth-secret: <MODAL_AUTH_SECRET>`
+Protected endpoints require Modal Proxy Auth Token headers:
+
+- `Modal-Key: <your-token-id>` (starts with `wk-`)
+- `Modal-Secret: <your-token-secret>` (starts with `ws-`)
 
 Public (auth-exempt) endpoints:
 
@@ -61,6 +63,23 @@ Public (auth-exempt) endpoints:
 - `GET /docs`
 - `GET /redoc`
 - `GET /openapi.json`
+
+**Setup:** Create a token at Modal Settings → [Proxy Auth Tokens](https://modal.com/settings/proxy-auth-tokens)
+
+**Example:**
+
+```bash
+export TOKEN_ID="wk-xxx"
+export TOKEN_SECRET="ws-xxx"
+
+curl -X POST https://<api-url>/jobs \
+  -H "Modal-Key: $TOKEN_ID" \
+  -H "Modal-Secret: $TOKEN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "user_id": "user123"}'
+```
+
+See [PROXY_AUTH_SETUP.md](docs/PROXY_AUTH_SETUP.md) for detailed authentication setup and examples.
 
 ### Data Models
 
@@ -175,7 +194,7 @@ Common errors:
 - `500` internal/database error
 
 #### `GET /jobs/{job_id}`
-
+    
 Get current job status.
 
 Example request:

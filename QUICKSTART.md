@@ -27,7 +27,12 @@ Required values in `.env`:
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_KEY`
 - `VECINITA_EMBEDDING_API_URL`
-- `MODAL_AUTH_KEY` and `MODAL_AUTH_SECRET` if API proxy auth is enabled
+
+Optional but recommended for production:
+
+- `MODAL_AUTH_KEY` and `MODAL_AUTH_SECRET` for internal proxy service authentication (for Modal proxy routes forwarding)
+
+**Note on Proxy Authentication:** The FastAPI endpoint now requires Modal Proxy Auth Tokens. Users must obtain tokens from the [Modal proxy auth settings](https://modal.com/settings/proxy-auth-tokens) and provide them in request headers (`Modal-Key` and `Modal-Secret`).
 
 ## 3) Install and Test
 
@@ -66,13 +71,19 @@ modal app info vecinita-scraper-api
 Smoke checks:
 
 ```bash
-# Public health endpoint
+# Public health endpoint (exempt from auth)
 curl https://<api-base-url>/health
 
-# Protected endpoint (when proxy auth enabled)
+# Protected endpoints (Modal Proxy Auth required)
+# First, create a Proxy Auth Token in Modal dashboard: https://modal.com/settings/proxy-auth-tokens
+
+export TOKEN_ID=wk-xxx  # Your Modal proxy auth token ID
+export TOKEN_SECRET=ws-xxx  # Your Modal proxy auth token secret
+
+# Access protected endpoints with Modal auth headers
 curl https://<api-base-url>/jobs \
-  -H "x-modal-auth-key: $MODAL_AUTH_KEY" \
-  -H "x-modal-auth-secret: $MODAL_AUTH_SECRET"
+  -H "Modal-Key: $TOKEN_ID" \
+  -H "Modal-Secret: $TOKEN_SECRET"
 ```
 
 ## API Endpoints (Current)
