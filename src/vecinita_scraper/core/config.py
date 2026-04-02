@@ -25,6 +25,11 @@ def _load_dotenv() -> bool:
 _load_dotenv()
 
 
+def _env(name: str, default: str = "") -> str:
+    """Return environment value as a guaranteed string."""
+    return os.getenv(name) or default
+
+
 @dataclass
 class SupabaseConfig:
     """Supabase configuration."""
@@ -38,10 +43,10 @@ class SupabaseConfig:
     def from_env() -> "SupabaseConfig":
         """Load Supabase config from environment."""
         return SupabaseConfig(
-            project_url=os.getenv("SUPABASE_PROJECT_URL", ""),
-            publishable_key=os.getenv("SUPABASE_PUBLISHABLE_KEY", ""),
-            anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
-            service_key=os.getenv("SUPABASE_SERVICE_KEY", ""),
+            project_url=_env("SUPABASE_URL") or _env("SUPABASE_PROJECT_URL"),
+            publishable_key=_env("SUPABASE_PUBLISHABLE_KEY"),
+            anon_key=_env("SUPABASE_ANON_KEY"),
+            service_key=_env("SUPABASE_KEY") or _env("SUPABASE_SERVICE_KEY"),
         )
 
     def validate(self) -> None:
@@ -49,7 +54,7 @@ class SupabaseConfig:
         if not all([self.project_url, self.publishable_key, self.anon_key]):
             raise ConfigError(
                 "Missing required Supabase configuration: "
-                "SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY"
+                "SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY"
             )
 
 
@@ -86,15 +91,16 @@ class APIConfig:
 
     vecinita_model_api_url: str
     vecinita_embedding_api_url: str
-    vecinita_embedding_api_token: str
+    embedding_service_auth_token: str
 
     @staticmethod
     def from_env() -> "APIConfig":
         """Load API config from environment."""
         return APIConfig(
-            vecinita_model_api_url=os.getenv("VECINITA_MODEL_API_URL", ""),
-            vecinita_embedding_api_url=os.getenv("VECINITA_EMBEDDING_API_URL", ""),
-            vecinita_embedding_api_token=os.getenv("VECINITA_EMBEDDING_API_TOKEN", ""),
+            vecinita_model_api_url=_env("VECINITA_MODEL_API_URL"),
+            vecinita_embedding_api_url=_env("VECINITA_EMBEDDING_API_URL"),
+            embedding_service_auth_token=_env("EMBEDDING_SERVICE_AUTH_TOKEN")
+            or _env("VECINITA_EMBEDDING_API_TOKEN"),
         )
 
     def validate(self) -> None:

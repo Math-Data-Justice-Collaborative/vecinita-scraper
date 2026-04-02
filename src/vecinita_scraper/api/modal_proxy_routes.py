@@ -59,7 +59,7 @@ def _build_upstream_headers(
     if accept:
         headers["accept"] = accept
 
-    embedding_token = get_config().api.vecinita_embedding_api_token.strip()
+    embedding_token = get_config().api.embedding_service_auth_token.strip()
     if service == "embedding" and embedding_token:
         headers["authorization"] = f"Bearer {embedding_token}"
 

@@ -20,7 +20,7 @@ class EmbeddingClient:
         if base_url is None:
             config = get_config()
             resolved_base_url = base_url or config.api.vecinita_embedding_api_url
-            resolved_api_token = api_token or config.api.vecinita_embedding_api_token
+            resolved_api_token = api_token or config.api.embedding_service_auth_token
         else:
             resolved_base_url = base_url
             resolved_api_token = api_token or ""
