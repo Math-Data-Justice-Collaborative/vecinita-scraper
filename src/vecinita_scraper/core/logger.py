@@ -4,11 +4,10 @@ import logging
 import sys
 from typing import Any
 
-structlog: Any
 try:
-    import structlog
+    import structlog as _structlog
 except ImportError:  # pragma: no cover - fallback for minimal test environments
-    structlog = None
+    _structlog = None
 
 
 class _StdlibLoggerProxy:
@@ -56,29 +55,29 @@ def configure_logging() -> None:
     )
 
     # Configure structlog
-    if structlog is not None:
-        structlog.configure(
+    if _structlog is not None:
+        _structlog.configure(
             processors=[
-                structlog.stdlib.filter_by_level,
-                structlog.stdlib.add_logger_name,
-                structlog.stdlib.add_log_level,
-                structlog.stdlib.PositionalArgumentsFormatter(),
-                structlog.processors.TimeStamper(fmt="iso"),
-                structlog.processors.StackInfoRenderer(),
-                structlog.processors.format_exc_info,
-                structlog.processors.UnicodeDecoder(),
-                structlog.processors.JSONRenderer(),
+                _structlog.stdlib.filter_by_level,
+                _structlog.stdlib.add_logger_name,
+                _structlog.stdlib.add_log_level,
+                _structlog.stdlib.PositionalArgumentsFormatter(),
+                _structlog.processors.TimeStamper(fmt="iso"),
+                _structlog.processors.StackInfoRenderer(),
+                _structlog.processors.format_exc_info,
+                _structlog.processors.UnicodeDecoder(),
+                _structlog.processors.JSONRenderer(),
             ],
             context_class=dict,
-            logger_factory=structlog.stdlib.LoggerFactory(),
+            logger_factory=_structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
         )
 
 
 def get_logger(name: str) -> Any:
     """Get a logger instance."""
-    if structlog is not None:
-        return structlog.get_logger(name)
+    if _structlog is not None:
+        return _structlog.get_logger(name)
     return _StdlibLoggerProxy(logging.getLogger(name))
 
 
