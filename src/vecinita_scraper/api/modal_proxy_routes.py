@@ -36,32 +36,13 @@ def _resolve_service_base_url(service: str) -> str:
 def _build_upstream_headers(
     service: str, content_type: str | None, accept: str | None
 ) -> dict[str, str]:
-    """Build headers for upstream Modal service requests.
-
-    Note: The proxy itself now requires Modal proxy auth via Modal-Key and Modal-Secret
-    headers from the client, but when forwarding to upstream services, we use the
-    configured Modal auth credentials.
-    """
-    modal_auth_key = os.getenv("MODAL_AUTH_KEY", "").strip()
-    modal_auth_secret = os.getenv("MODAL_AUTH_SECRET", "").strip()
-    if not modal_auth_key or not modal_auth_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Modal proxy auth is not configured",
-        )
-
-    headers = {
-        "x-modal-auth-key": modal_auth_key,
-        "x-modal-auth-secret": modal_auth_secret,
-    }
+    """Build headers for upstream service requests without forwarding auth tokens."""
+    _ = service
+    headers: dict[str, str] = {}
     if content_type:
         headers["content-type"] = content_type
     if accept:
         headers["accept"] = accept
-
-    embedding_token = get_config().api.embedding_service_auth_token.strip()
-    if service == "embedding" and embedding_token:
-        headers["authorization"] = f"Bearer {embedding_token}"
 
     return headers
 

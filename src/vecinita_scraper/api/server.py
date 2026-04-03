@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -15,22 +14,9 @@ from vecinita_scraper.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-_AUTH_EXEMPT_PATHS = {"/health", "/docs", "/redoc", "/openapi.json"}
-
-
-def _is_proxy_auth_enabled() -> bool:
-    enabled = os.getenv("MODAL_PROXY_AUTH_ENABLED", "true").strip().lower()
-    return enabled in {"1", "true", "yes", "on"}
-
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI app."""
-    expected_auth_key = os.getenv("MODAL_AUTH_KEY", "").strip()
-    expected_auth_secret = os.getenv("MODAL_AUTH_SECRET", "").strip()
-    proxy_auth_required = _is_proxy_auth_enabled() and bool(
-        expected_auth_key and expected_auth_secret
-    )
-
     app = FastAPI(
         title="Vecinita Scraper",
         description="Serverless web scraping pipeline with job queue management",
@@ -50,23 +36,6 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def log_requests(request: Request, call_next: Any) -> Any:
         """Log HTTP requests."""
-        if proxy_auth_required and request.url.path not in _AUTH_EXEMPT_PATHS:
-            auth_key = request.headers.get("x-modal-auth-key", "")
-            auth_secret = request.headers.get("x-modal-auth-secret", "")
-            key_matches = secrets.compare_digest(auth_key, expected_auth_key)
-            secret_matches = secrets.compare_digest(auth_secret, expected_auth_secret)
-            is_valid = key_matches and secret_matches
-            if not is_valid:
-                logger.warning(
-                    "Rejected request due to invalid modal proxy auth",
-                    method=request.method,
-                    path=request.url.path,
-                )
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Unauthorized"},
-                )
-
         logger.info("HTTP request", method=request.method, path=request.url.path)
         response = await call_next(request)
         logger.info(

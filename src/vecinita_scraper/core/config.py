@@ -128,7 +128,6 @@ class APIConfig:
 
     vecinita_model_api_url: str
     vecinita_embedding_api_url: str
-    embedding_service_auth_token: str
 
     @staticmethod
     def from_env() -> "APIConfig":
@@ -136,8 +135,6 @@ class APIConfig:
         return APIConfig(
             vecinita_model_api_url=_env("VECINITA_MODEL_API_URL"),
             vecinita_embedding_api_url=_env("VECINITA_EMBEDDING_API_URL"),
-            embedding_service_auth_token=_env("EMBEDDING_SERVICE_AUTH_TOKEN")
-            or _env("VECINITA_EMBEDDING_API_TOKEN"),
         )
 
     def validate(self) -> None:

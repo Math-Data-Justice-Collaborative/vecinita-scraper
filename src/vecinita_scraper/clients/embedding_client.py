@@ -20,16 +20,14 @@ class EmbeddingClient:
         if base_url is None:
             config = get_config()
             resolved_base_url = base_url or config.api.vecinita_embedding_api_url
-            resolved_api_token = api_token or config.api.embedding_service_auth_token
         else:
             resolved_base_url = base_url
-            resolved_api_token = api_token or ""
 
         if not resolved_base_url:
             raise EmbeddingError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
 
         self._base_url = resolved_base_url.rstrip("/")
-        self._api_token = resolved_api_token
+        _ = api_token  # Auth tokens are intentionally not forwarded from scraper clients.
         self._cached_model_config: EmbeddingModelConfig | None = None
         self._cache_time = 0.0
         self._default_batch_size = 100
@@ -124,8 +122,6 @@ class EmbeddingClient:
             ) from exc
 
         headers: dict[str, str] = {}
-        if self._api_token:
-            headers["Authorization"] = f"Bearer {self._api_token}"
 
         url = f"{self._base_url}{path}"
         try:
