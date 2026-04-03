@@ -59,6 +59,43 @@ class SupabaseConfig:
 
 
 @dataclass
+class PostgresConfig:
+    """Render Postgres configuration."""
+
+    database_url: str
+    data_mode: str
+
+    @staticmethod
+    def from_env() -> "PostgresConfig":
+        """Load Postgres config from environment."""
+        data_mode = (os.getenv("DB_DATA_MODE") or "auto").strip().lower()
+        if data_mode not in {"auto", "postgres", "supabase"}:
+            data_mode = "auto"
+
+        return PostgresConfig(
+            database_url=_env("DATABASE_URL"),
+            data_mode=data_mode,
+        )
+
+    def use_postgres(self, environment: str) -> bool:
+        """Return whether runtime should require Postgres for data paths."""
+        if self.data_mode == "postgres":
+            return True
+        if self.data_mode == "supabase":
+            return False
+        # "auto" defaults to Postgres on Render-like production envs.
+        return environment == "production" and bool(self.database_url)
+
+    def validate(self, environment: str) -> None:
+        """Validate Postgres requirements when Postgres mode is active."""
+        if self.use_postgres(environment) and not self.database_url:
+            raise ConfigError(
+                "Missing required Postgres configuration: DATABASE_URL must be set "
+                "when DB_DATA_MODE resolves to postgres"
+            )
+
+
+@dataclass
 class ModalConfig:
     """Modal configuration."""
 
@@ -155,6 +192,7 @@ class Config:
         self.environment = os.getenv("ENVIRONMENT", "development")
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
 
+        self.postgres = PostgresConfig.from_env()
         self.supabase = SupabaseConfig.from_env()
         self.modal = ModalConfig.from_env()
         self.api = APIConfig.from_env()
@@ -163,7 +201,9 @@ class Config:
 
     def validate(self) -> None:
         """Validate all configuration."""
-        self.supabase.validate()
+        self.postgres.validate(self.environment)
+        if not self.postgres.use_postgres(self.environment):
+            self.supabase.validate()
         if self.environment == "production":
             self.modal.validate()
 
