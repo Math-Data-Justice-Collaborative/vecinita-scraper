@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import ValidationError
 
 from vecinita_scraper.app import scrape_jobs_queue
-from vecinita_scraper.core.db import SupabaseDB
+from vecinita_scraper.core.db import PostgresDB
 from vecinita_scraper.core.errors import DatabaseError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import (
@@ -23,6 +23,14 @@ from vecinita_scraper.core.models import (
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger(__name__)
+
+
+def _coerce_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return datetime.utcnow()
 
 
 @router.post(
@@ -53,8 +61,7 @@ async def submit_job(request: ScrapeJobRequest) -> dict[str, Any]:
         HTTPException: For invalid input or database errors
     """
     try:
-        # Initialize database
-        db = SupabaseDB()
+        db = PostgresDB()
 
         # Use provided configs or defaults
         crawl_config = request.crawl_config or CrawlConfig()
@@ -133,7 +140,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         HTTPException: For invalid job_id or database errors
     """
     try:
-        db = SupabaseDB()
+        db = PostgresDB()
 
         # Get job from database
         job_data = await db.get_job_status(job_id)
@@ -168,12 +175,8 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
             progress_pct=progress_pct,
             current_step=current_status.value,
             error_message=job_data.get("error_message"),
-            updated_at=datetime.fromisoformat(
-                job_data.get("updated_at", datetime.utcnow().isoformat())
-            ),
-            created_at=datetime.fromisoformat(
-                job_data.get("created_at", datetime.utcnow().isoformat())
-            ),
+            updated_at=_coerce_datetime(job_data.get("updated_at")),
+            created_at=_coerce_datetime(job_data.get("created_at")),
             crawl_url_count=job_data.get("crawl_url_count", 0),
             chunk_count=job_data.get("chunk_count", 0),
             embedding_count=job_data.get("embedding_count", 0),
@@ -222,15 +225,21 @@ async def list_jobs(user_id: str | None = None, limit: int = 50) -> dict[str, An
         )
 
     try:
-        # This assumes a list_jobs method on SupabaseDB
-        # For now, return a placeholder response
+        db = PostgresDB()
+        result = await db.list_jobs(user_id=user_id, limit=limit)
         return {
             "user_id": user_id,
             "limit": limit,
-            "jobs": [],
-            "total": 0,
+            "jobs": result["jobs"],
+            "total": result["total"],
         }
 
+    except DatabaseError as e:
+        logger.exception("Database error listing jobs", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error listing jobs",
+        ) from e
     except Exception as e:
         logger.exception("Error listing jobs", error=str(e))
         raise HTTPException(
@@ -261,7 +270,7 @@ async def cancel_job(job_id: str) -> dict[str, Any]:
         HTTPException: For invalid job_id, database errors, or if job can't be cancelled
     """
     try:
-        db = SupabaseDB()
+        db = PostgresDB()
 
         # Get current job status
         job_data = await db.get_job_status(job_id)

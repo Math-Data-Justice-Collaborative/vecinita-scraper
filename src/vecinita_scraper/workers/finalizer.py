@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from vecinita_scraper.app import APP_SECRETS, app, store_jobs_queue
-from vecinita_scraper.core.db import SupabaseDB, get_db
+from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import JobStatus, StoreJobQueueData
 
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 async def run_finalization_job(
     job_data: StoreJobQueueData,
-    db: SupabaseDB | None = None,
+    db: PostgresDB | None = None,
 ) -> dict[str, Any]:
     """Mark a job as completed after embeddings have been persisted."""
     database = db or get_db()

@@ -16,9 +16,9 @@ def mock_config():
     config = MagicMock()
     config.environment = "test"
     config.log_level = "DEBUG"
-    config.supabase.project_url = "https://test.supabase.co"
-    config.supabase.anon_key = "test-key"
+    config.postgres.database_url = "postgresql://postgres:postgres@localhost:5432/vecinita"
     config.api.vecinita_embedding_api_url = "https://test.embedding.api"
+    config.api.vecinita_embedding_api_token = "test-token"
     config.crawl.timeout_seconds = 60
     config.chunking.min_size_tokens = 256
     config.chunking.max_size_tokens = 1024
@@ -27,9 +27,8 @@ def mock_config():
 
 @pytest.fixture
 def mock_db():
-    """Mock Supabase database."""
+    """Mock Postgres database."""
     db = AsyncMock()
-    db.client = MagicMock()
     db.create_scraping_job = AsyncMock(return_value="test-job-id")
     db.get_job_status = AsyncMock(return_value={"id": "test-job-id", "status": "pending"})
     db.update_job_status = AsyncMock()

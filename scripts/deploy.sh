@@ -58,9 +58,7 @@ echo ""
 echo "🔍 Checking configuration..."
 
 required_vars=(
-    "SUPABASE_PROJECT_URL"
-    "SUPABASE_ANON_KEY"
-    "SUPABASE_SERVICE_KEY"
+    "DATABASE_URL"
     "VECINITA_EMBEDDING_API_URL"
 )
 

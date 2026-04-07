@@ -23,7 +23,6 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
-    # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -32,7 +31,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Add request logging middleware
     @app.middleware("http")
     async def log_requests(request: Request, call_next: Any) -> Any:
         """Log HTTP requests."""
@@ -46,16 +44,13 @@ def create_app() -> FastAPI:
         )
         return response
 
-    # Health check endpoint
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "ok", "service": "vecinita-scraper"}
 
-    # Include routers
     app.include_router(jobs_router)
 
-    # Global exception handler
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Handle uncaught exceptions."""
@@ -68,5 +63,4 @@ def create_app() -> FastAPI:
     return app
 
 
-# Create the app instance
 app = create_app()

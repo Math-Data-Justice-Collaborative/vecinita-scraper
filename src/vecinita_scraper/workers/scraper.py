@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from vecinita_scraper.app import APP_SECRETS, app, process_jobs_queue, scrape_jobs_queue
-from vecinita_scraper.core.db import SupabaseDB, get_db
+from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.errors import CrawlingError, ValidationError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import JobStatus, ProcessJobQueueData, ScrapeJobQueueData
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 async def run_scrape_job(
     job_data: ScrapeJobQueueData,
-    db: SupabaseDB | None = None,
+    db: PostgresDB | None = None,
     process_queue: Any | None = None,
 ) -> dict[str, Any]:
     """Execute a scrape job and enqueue extracted content for processing."""

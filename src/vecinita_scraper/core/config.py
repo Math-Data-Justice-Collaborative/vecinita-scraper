@@ -21,7 +21,6 @@ def _load_dotenv() -> bool:
     return dotenv_loader()
 
 
-# Load .env file
 _load_dotenv()
 
 
@@ -30,14 +29,16 @@ def _env(name: str, default: str = "") -> str:
     return os.getenv(name) or default
 
 
-@dataclass
-class SupabaseConfig:
-    """Supabase configuration."""
+def _env(name: str, default: str = "") -> str:
+    """Return environment value as a guaranteed string."""
+    return os.getenv(name) or default
 
-    project_url: str
-    publishable_key: str
-    anon_key: str
-    service_key: str
+
+@dataclass
+class PostgresConfig:
+    """Render Postgres configuration."""
+
+    database_url: str
 
     @staticmethod
     def from_env() -> "SupabaseConfig":
