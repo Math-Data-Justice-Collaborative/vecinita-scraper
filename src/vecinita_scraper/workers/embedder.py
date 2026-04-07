@@ -6,7 +6,7 @@ from typing import Any
 
 from vecinita_scraper.app import APP_SECRETS, app, embed_jobs_queue, modal, store_jobs_queue
 from vecinita_scraper.clients.embedding_client import EmbeddingClient
-from vecinita_scraper.core.db import SupabaseDB, get_db
+from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.errors import EmbeddingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import EmbedJobQueueData, JobStatus, StoreJobQueueData
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 async def run_embedding_job(
     job_data: EmbedJobQueueData,
-    db: SupabaseDB | None = None,
+    db: PostgresDB | None = None,
     store_queue: Any | None = None,
     embedding_client: EmbeddingClient | None = None,
 ) -> dict[str, Any]:

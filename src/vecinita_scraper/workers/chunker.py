@@ -7,7 +7,7 @@ from typing import Any
 from vecinita_scraper.app import APP_SECRETS, app, chunk_jobs_queue, embed_jobs_queue
 from vecinita_scraper.chunkers.semantic_chunker import SemanticChunker
 from vecinita_scraper.core.config import get_config
-from vecinita_scraper.core.db import SupabaseDB, get_db
+from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.errors import ChunkingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import (
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 async def run_chunking_job(
     job_data: ChunkJobQueueData,
-    db: SupabaseDB | None = None,
+    db: PostgresDB | None = None,
     embed_queue: Any | None = None,
 ) -> dict[str, Any]:
     """Chunk processed markdown and enqueue chunk batches for embedding."""

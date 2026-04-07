@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vecinita_scraper.core.db import SupabaseDB
+from vecinita_scraper.core.db import PostgresDB
 from vecinita_scraper.core.models import (
     ChunkingConfig,
     ChunkJobQueueData,
@@ -22,7 +22,7 @@ from vecinita_scraper.core.models import (
 @pytest.fixture
 def integration_mock_db():
     """Create a comprehensive mock database for integration tests."""
-    db = AsyncMock(spec=SupabaseDB)
+    db = AsyncMock(spec=PostgresDB)
     db.create_scraping_job = AsyncMock(return_value="integration-job-123")
     db.update_job_status = AsyncMock()
     db.store_crawled_url = AsyncMock(return_value="crawled-001")
