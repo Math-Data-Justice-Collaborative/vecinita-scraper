@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vecinita-data-management-api-v1
+    runtime: docker
+    plan: starter
+    region: virginia
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: off
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+      - key: MODAL_WORKSPACE
+        sync: false
+      - key: VECINITA_MODEL_API_URL
+        sync: false
+      - key: VECINITA_EMBEDDING_API_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: UPSTREAM_TIMEOUT_SECONDS
+        value: "55"

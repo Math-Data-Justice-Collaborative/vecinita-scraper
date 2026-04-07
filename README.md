@@ -24,6 +24,35 @@ modal auth login
 make deploy
 ```
 
+### Docker deploy
+
+This service also ships with a Dockerfile and `render.yaml` for a Render Docker web-service deploy.
+
+Required environment variables for the Docker deployment:
+
+- `DATABASE_URL`
+- `VECINITA_EMBEDDING_API_URL`
+- `CORS_ORIGINS`
+
+Recommended environment variables:
+
+- `VECINITA_MODEL_API_URL`
+- `MODAL_TOKEN_ID`
+- `MODAL_TOKEN_SECRET`
+- `MODAL_WORKSPACE`
+
+Local image build:
+
+```bash
+docker build -t vecinita-data-management-api-v1 .
+docker run --rm -p 10000:10000 \
+	-e PORT=10000 \
+	-e DATABASE_URL=postgresql://user:pass@host:5432/db \
+	-e VECINITA_EMBEDDING_API_URL=https://example-embedding.modal.run \
+	-e CORS_ORIGINS=http://localhost:3000 \
+	vecinita-data-management-api-v1
+```
+
 ## Runtime requirements
 
 - `DATABASE_URL`

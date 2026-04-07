@@ -15,8 +15,16 @@ from vecinita_scraper.core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _allowed_origins() -> list[str]:
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["*"]
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI app."""
+    allowed_origins = _allowed_origins()
+
     app = FastAPI(
         title="Vecinita Scraper",
         description="Serverless web scraping pipeline with job queue management",
@@ -25,8 +33,8 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=allowed_origins,
+        allow_credentials=allowed_origins != ["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
