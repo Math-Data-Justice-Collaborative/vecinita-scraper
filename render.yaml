@@ -4,7 +4,10 @@ services:
     runtime: docker
     plan: starter
     region: virginia
-    dockerfilePath: ./Dockerfile
+    # Render resolves Docker paths from the repository root, not from the
+    # directory that contains this render.yaml file.
+    dockerfilePath: ./apps/backend/scraper-service/Dockerfile
+    dockerContext: ./apps/backend/scraper-service
     autoDeployTrigger: off
     healthCheckPath: /health
     envVars:
