@@ -66,6 +66,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       VECINITA_EMBEDDING_API_URL: ${{ secrets.VECINITA_EMBEDDING_API_URL }}
+      VECINITA_EMBEDDING_API_TOKEN: ${{ secrets.VECINITA_EMBEDDING_API_TOKEN }}
 
     steps:
       - name: Checkout Repository

@@ -18,6 +18,7 @@ def mock_config():
     config.log_level = "DEBUG"
     config.postgres.database_url = "postgresql://postgres:postgres@localhost:5432/vecinita"
     config.api.vecinita_embedding_api_url = "https://test.embedding.api"
+    config.api.vecinita_embedding_api_token = "test-token"
     config.crawl.timeout_seconds = 60
     config.chunking.min_size_tokens = 256
     config.chunking.max_size_tokens = 1024
