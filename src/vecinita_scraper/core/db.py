@@ -16,12 +16,12 @@ from vecinita_scraper.core.logger import get_logger
 logger = get_logger(__name__)
 
 try:
-    import psycopg2
-    from psycopg2.extras import Json, RealDictCursor
+    import psycopg2  # type: ignore[import-untyped]
+    from psycopg2.extras import Json, RealDictCursor  # type: ignore[import-untyped]
 except ImportError as exc:  # pragma: no cover - exercised only in incomplete environments
-    psycopg2 = None  # type: ignore[assignment]
-    Json = None  # type: ignore[assignment]
-    RealDictCursor = None  # type: ignore[assignment]
+    psycopg2 = None
+    Json = None
+    RealDictCursor = None
     _PSYCOPG2_IMPORT_ERROR: Exception | None = exc
 else:
     _PSYCOPG2_IMPORT_ERROR = None
@@ -106,7 +106,8 @@ class PostgresDB:
             raise DatabaseError("DATABASE_URL is required for scraper persistence")
         if psycopg2 is None or Json is None or RealDictCursor is None:
             raise DatabaseError(
-                "psycopg2-binary is not installed. Install project dependencies before using the database client."
+                "psycopg2-binary is not installed. Install project dependencies "
+                "before using the database client."
             ) from _PSYCOPG2_IMPORT_ERROR
 
     async def _run(self, operation: Callable[[], T]) -> T:
@@ -362,7 +363,11 @@ class PostgresDB:
                             extracted_content_id,
                             markdown_content,
                             tables_json,
-                            Json(_parse_json_text(metadata_json)) if metadata_json is not None else None,
+                            (
+                                Json(_parse_json_text(metadata_json))
+                                if metadata_json is not None
+                                else None
+                            ),
                         ),
                     )
 
