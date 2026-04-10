@@ -9,14 +9,37 @@ import pytest
 from fastapi.testclient import TestClient
 
 from vecinita_scraper.api.server import create_app
+from vecinita_scraper.core.config import get_config
 from vecinita_scraper.core.models import JobStatus
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """Create FastAPI test client."""
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("SCRAPER_DEBUG_BYPASS_AUTH", "true")
+    monkeypatch.delenv("SCRAPER_API_KEYS", raising=False)
+    get_config.cache_clear()
     app = create_app()
     return TestClient(app)
+
+
+@pytest.fixture
+def auth_client(monkeypatch):
+    """Create FastAPI test client with auth enforcement enabled."""
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("SCRAPER_DEBUG_BYPASS_AUTH", "false")
+    monkeypatch.setenv("SCRAPER_API_KEYS", "test-api-key")
+    get_config.cache_clear()
+    app = create_app()
+    return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_config_cache_after_test():
+    """Avoid cross-test env leakage through config cache."""
+    yield
+    get_config.cache_clear()
 
 
 @pytest.fixture
@@ -51,6 +74,40 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "ok"
         assert data["service"] == "vecinita-scraper"
+
+
+class TestAuthMiddleware:
+    """Test auth middleware behavior."""
+
+    def test_requires_authorization_header(self, auth_client):
+        """Protected routes require a valid Authorization header."""
+        response = auth_client.get("/jobs")
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Missing or invalid Authorization header"
+
+    def test_rejects_invalid_api_key(self, auth_client):
+        """Protected routes reject unknown API keys."""
+        response = auth_client.get("/jobs", headers={"Authorization": "Bearer wrong-key"})
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Invalid API key"
+
+    @patch("vecinita_scraper.api.routes.PostgresDB")
+    def test_accepts_valid_api_key(self, mock_db_class, auth_client, mock_db_for_api):
+        """Protected routes accept configured API keys."""
+        mock_db_class.return_value = mock_db_for_api
+        response = auth_client.get("/jobs", headers={"Authorization": "Bearer test-api-key"})
+        assert response.status_code == 200
+
+    def test_bypass_not_allowed_outside_dev(self, monkeypatch):
+        """Bypass mode should fail config validation outside local/dev/test environments."""
+        from vecinita_scraper.core.errors import ConfigError
+
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        monkeypatch.setenv("SCRAPER_DEBUG_BYPASS_AUTH", "true")
+        get_config.cache_clear()
+
+        with pytest.raises(ConfigError):
+            create_app()
 
 
 class TestSubmitJob:

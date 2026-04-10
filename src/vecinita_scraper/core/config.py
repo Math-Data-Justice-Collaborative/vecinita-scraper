@@ -29,6 +29,17 @@ def _env(name: str, default: str = "") -> str:
     return os.getenv(name) or default
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse boolean-like environment values."""
+    value = _env(name, "true" if default else "false").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _env_csv(name: str) -> list[str]:
+    """Parse comma-separated environment values."""
+    return [item.strip() for item in _env(name).split(",") if item.strip()]
+
+
 @dataclass
 class PostgresConfig:
     """Render Postgres configuration."""
@@ -99,6 +110,42 @@ class APIConfig:
 
 
 @dataclass
+class AuthConfig:
+    """API key authentication configuration."""
+
+    api_keys: tuple[str, ...]
+    debug_bypass_auth: bool
+
+    @staticmethod
+    def from_env() -> "AuthConfig":
+        """Load auth config from environment."""
+        api_keys = _env_csv("SCRAPER_API_KEYS")
+        legacy_admin_token = _env("DEV_ADMIN_BEARER_TOKEN").strip()
+        if legacy_admin_token and legacy_admin_token not in api_keys:
+            api_keys.append(legacy_admin_token)
+
+        return AuthConfig(
+            api_keys=tuple(api_keys),
+            debug_bypass_auth=_env_bool("SCRAPER_DEBUG_BYPASS_AUTH", default=False),
+        )
+
+    def validate(self, environment: str) -> None:
+        """Validate auth config with environment safety checks."""
+        dev_only_envs = {"development", "dev", "local", "test"}
+
+        if self.debug_bypass_auth and environment not in dev_only_envs:
+            raise ConfigError(
+                "SCRAPER_DEBUG_BYPASS_AUTH can only be enabled in local/dev environments"
+            )
+
+        if not self.debug_bypass_auth and not self.api_keys and environment != "test":
+            raise ConfigError(
+                "Missing required auth configuration: set SCRAPER_API_KEYS "
+                "(or DEV_ADMIN_BEARER_TOKEN for compatibility)"
+            )
+
+
+@dataclass
 class CrawlConfig:
     """Crawl4AI configuration."""
 
@@ -143,12 +190,14 @@ class Config:
         self.postgres = PostgresConfig.from_env()
         self.modal = ModalConfig.from_env()
         self.api = APIConfig.from_env()
+        self.auth = AuthConfig.from_env()
         self.crawl = CrawlConfig.from_env()
         self.chunking = ChunkingConfig.from_env()
 
     def validate(self) -> None:
         """Validate all configuration."""
         self.postgres.validate()
+        self.auth.validate(self.environment)
         if self.environment == "production":
             self.modal.validate()
 

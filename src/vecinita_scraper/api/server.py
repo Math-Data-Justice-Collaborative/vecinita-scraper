@@ -10,9 +10,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from vecinita_scraper.api.routes import router as jobs_router
+from vecinita_scraper.core.config import get_config
 from vecinita_scraper.core.logger import get_logger
 
 logger = get_logger(__name__)
+_PUBLIC_PATHS = {"/health", "/openapi.json", "/docs", "/redoc"}
+
+
+def _is_public_path(path: str) -> bool:
+    if path in _PUBLIC_PATHS:
+        return True
+    return path.startswith("/docs/") or path.startswith("/redoc/")
+
+
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    parts = authorization.strip().split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    return parts[1].strip() or None
+
+
+def _token_fingerprint(token: str) -> str:
+    if len(token) <= 8:
+        return token
+    return f"{token[:4]}...{token[-4:]}"
 
 
 def _allowed_origins() -> list[str]:
@@ -23,6 +46,7 @@ def _allowed_origins() -> list[str]:
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI app."""
+    config = get_config()
     allowed_origins = _allowed_origins()
 
     app = FastAPI(
@@ -38,6 +62,48 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def auth_guard(request: Request, call_next: Any) -> Any:
+        """Enforce API key auth for protected routes."""
+        if request.method == "OPTIONS" or _is_public_path(request.url.path):
+            return await call_next(request)
+
+        if config.auth.debug_bypass_auth:
+            logger.warning(
+                "Auth bypass enabled for request",
+                method=request.method,
+                path=request.url.path,
+                environment=config.environment,
+            )
+            return await call_next(request)
+
+        token = _extract_bearer_token(request.headers.get("Authorization"))
+        if token is None:
+            logger.warning(
+                "Missing or invalid Authorization header",
+                method=request.method,
+                path=request.url.path,
+            )
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Missing or invalid Authorization header"},
+            )
+
+        if token not in config.auth.api_keys:
+            logger.warning(
+                "Rejected API key",
+                method=request.method,
+                path=request.url.path,
+                api_key_fingerprint=_token_fingerprint(token),
+            )
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Invalid API key"},
+            )
+
+        request.state.api_key_fingerprint = _token_fingerprint(token)
+        return await call_next(request)
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next: Any) -> Any:
