@@ -8,7 +8,7 @@ services:
     # directory that contains this render.yaml file.
     dockerfilePath: ./apps/backend/scraper-service/Dockerfile
     dockerContext: ./apps/backend/scraper-service
-    autoDeployTrigger: off
+    autoDeployTrigger: checksPass
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
