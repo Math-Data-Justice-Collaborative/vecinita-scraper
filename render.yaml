@@ -11,6 +11,7 @@ services:
     autoDeployTrigger: checksPass
     healthCheckPath: /health
     envVars:
+      # Shared Postgres: use monorepo root render.yaml (fromDatabase). Standalone: set in dashboard.
       - key: DATABASE_URL
         sync: false
       - key: MODAL_TOKEN_ID
