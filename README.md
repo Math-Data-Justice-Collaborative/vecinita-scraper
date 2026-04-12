@@ -28,11 +28,12 @@ make deploy
 
 This service also ships with a Dockerfile and `render.yaml` for a Render Docker web-service deploy.
 
-The root monorepo [`render.yaml`](../../render.yaml) injects `DATABASE_URL` for `vecinita-data-management-api-v1` from the single shared `vecinita-postgres` resource via `fromDatabase`. This directory’s [`render.yaml`](render.yaml) is for optional **standalone** Render deploys only: it does **not** provision a second database—set `DATABASE_URL` in the dashboard to your Postgres internal URL (or deploy from the repo root blueprint). If you run the same FastAPI image on **Modal**, add **`DATABASE_URL`** to the Modal secret group your deploy references so `vecinita_scraper` can validate and connect.
+The root monorepo [`render.yaml`](../../render.yaml) injects `DATABASE_URL` for `vecinita-data-management-api-v1` from the single shared `vecinita-postgres` resource via `fromDatabase`. This directory’s [`render.yaml`](render.yaml) is for optional **standalone** Render deploys only: it does **not** provision a second database—set `DATABASE_URL` in the dashboard to your Postgres internal URL (or deploy from the repo root blueprint). If you run the same FastAPI image on **Modal**, add **`DATABASE_URL`**, **`SCRAPER_API_KEYS`**, upstream URLs, and CORS settings to the Modal secret group **`vecinita-scraper-env`** (see `vecinita_scraper.api.app`). GitHub Actions only supplies Modal CLI auth; it does not create or sync that secret’s keys for you.
 
-Required environment variables for the Docker deployment:
+Required environment variables for the Docker / Render deployment:
 
 - `DATABASE_URL`
+- `SCRAPER_API_KEYS` — comma-separated Bearer secrets (or `DEV_ADMIN_BEARER_TOKEN` for one legacy token). **Omitting this in production causes immediate startup failure** (`ConfigError`).
 - `VECINITA_EMBEDDING_API_URL`
 - `CORS_ORIGINS`
 
@@ -49,7 +50,9 @@ Local image build:
 docker build -t vecinita-data-management-api-v1 .
 docker run --rm -p 10000:10000 \
 	-e PORT=10000 \
+	-e ENVIRONMENT=development \
 	-e DATABASE_URL=postgresql://user:pass@host:5432/db \
+	-e SCRAPER_API_KEYS=local-dev-key \
 	-e VECINITA_EMBEDDING_API_URL=https://example-embedding.modal.run \
 	-e CORS_ORIGINS=http://localhost:3000 \
 	vecinita-data-management-api-v1
