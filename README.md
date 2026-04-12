@@ -58,6 +58,8 @@ docker run --rm -p 10000:10000 \
 ## Runtime requirements
 
 - `DATABASE_URL` (canonical Postgres DSN)
+- `DB_URL` (optional; used only if `DATABASE_URL` is empty)
+- `DATABASE_URL` (canonical Postgres DSN)
 - `DB_URL` (optional; used only if `DATABASE_URL` is empty, same string otherwise)
 - `VECINITA_EMBEDDING_API_URL`
 - `VECINITA_MODEL_API_URL` when model-assisted extraction is enabled
