@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import ValidationError
 
 from vecinita_scraper.app import scrape_jobs_queue
@@ -204,7 +204,20 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     summary="List jobs",
     description="List recent scraping jobs (limited to last 50).",
 )
-async def list_jobs(user_id: str | None = None, limit: int = 50) -> dict[str, Any]:
+async def list_jobs(
+    user_id: str | None = Query(
+        default=None,
+        description="When set, only jobs created by this user id are returned.",
+        examples=["operator-42"],
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum rows to return (inclusive, capped at 100).",
+        examples=[25],
+    ),
+) -> dict[str, Any]:
     """
     List recent scraping jobs.
 

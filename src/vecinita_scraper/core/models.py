@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class JobStatus(StrEnum):
@@ -24,34 +24,109 @@ class JobStatus(StrEnum):
 
 
 class CrawlConfig(BaseModel):
-    """Configuration for web crawling."""
+    """Tuning knobs for the Crawl4AI crawl stage."""
 
-    max_depth: int = Field(default=3, ge=1, le=10)
-    timeout_seconds: int = Field(default=60, ge=10, le=600)
-    headless: bool = True
-    wait_for_content: bool = True
-    include_links: bool = True
-    include_images: bool = False
+    max_depth: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Maximum link depth to follow from the seed URL.",
+        examples=[3],
+    )
+    timeout_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=600,
+        description="Per-page navigation timeout in seconds.",
+        examples=[60],
+    )
+    headless: bool = Field(default=True, description="Run the browser headless.", examples=[True])
+    wait_for_content: bool = Field(
+        default=True,
+        description="Wait for dynamic content before extraction.",
+        examples=[True],
+    )
+    include_links: bool = Field(
+        default=True,
+        description="Whether discovered links are enqueued for deeper crawling.",
+        examples=[True],
+    )
+    include_images: bool = Field(
+        default=False,
+        description="Whether to download image assets (higher bandwidth).",
+        examples=[False],
+    )
 
 
 class ChunkingConfig(BaseModel):
-    """Configuration for semantic chunking."""
+    """Semantic chunking parameters applied after Docling extraction."""
 
-    min_size_tokens: int = Field(default=256, ge=100)
-    max_size_tokens: int = Field(default=1024, ge=200)
-    overlap_ratio: float = Field(default=0.2, ge=0.0, le=0.5)
-    split_by_sentence: bool = True
+    min_size_tokens: int = Field(
+        default=256,
+        ge=100,
+        description="Soft minimum chunk size in tokenizer tokens.",
+        examples=[256],
+    )
+    max_size_tokens: int = Field(
+        default=1024,
+        ge=200,
+        description="Hard maximum chunk size in tokenizer tokens.",
+        examples=[1024],
+    )
+    overlap_ratio: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=0.5,
+        description="Fraction of overlap between adjacent chunks.",
+        examples=[0.2],
+    )
+    split_by_sentence: bool = Field(
+        default=True,
+        description="Prefer sentence boundaries when splitting.",
+        examples=[True],
+    )
 
 
 class ScrapeJobRequest(BaseModel):
     """Request to submit a new scraping job."""
 
-    url: HttpUrl
-    user_id: str = Field(min_length=1)
-    crawl_config: CrawlConfig | None = None
-    chunking_config: ChunkingConfig | None = None
-    llm_extraction_prompt: str | None = None
-    metadata: dict[str, Any] | None = None
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "url": "https://example.org/community-resources",
+                    "user_id": "operator-42",
+                    "crawl_config": {"max_depth": 2, "timeout_seconds": 90},
+                    "chunking_config": {"min_size_tokens": 300, "max_size_tokens": 900},
+                    "metadata": {"source": "schemathesis-example"},
+                }
+            ]
+        }
+    )
+
+    url: HttpUrl = Field(..., description="HTTP or HTTPS seed URL for the crawl pipeline.")
+    user_id: str = Field(
+        ...,
+        min_length=1,
+        description="Opaque operator or tenant id used for auditing and filtering.",
+        examples=["operator-42"],
+    )
+    crawl_config: CrawlConfig | None = Field(
+        default=None,
+        description="Optional crawl overrides (defaults are sensible for most sites).",
+    )
+    chunking_config: ChunkingConfig | None = Field(
+        default=None,
+        description="Optional chunking overrides for downstream embedding.",
+    )
+    llm_extraction_prompt: str | None = Field(
+        default=None,
+        description="Optional prompt guiding LLM-assisted extraction.",
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Arbitrary JSON metadata stored with the job.",
+    )
 
     @field_validator("url")
     @classmethod
