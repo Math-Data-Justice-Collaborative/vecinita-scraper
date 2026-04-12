@@ -48,13 +48,21 @@ class PostgresConfig:
 
     @staticmethod
     def from_env() -> "PostgresConfig":
-        """Load Postgres config from environment."""
-        return PostgresConfig(database_url=_env("DATABASE_URL"))
+        """Load Postgres config from environment.
+
+        ``DATABASE_URL`` is canonical (Render ``fromDatabase`` / shared env groups).
+        ``DB_URL`` is accepted as a fallback when operators use a different secret name.
+        """
+        primary = _env("DATABASE_URL").strip()
+        fallback = _env("DB_URL").strip()
+        return PostgresConfig(database_url=primary or fallback)
 
     def validate(self) -> None:
         """Validate Postgres configuration."""
         if not self.database_url:
-            raise ConfigError("Missing required Postgres configuration: DATABASE_URL")
+            raise ConfigError(
+                "Missing required Postgres configuration: DATABASE_URL (or DB_URL as fallback)"
+            )
 
 
 @dataclass

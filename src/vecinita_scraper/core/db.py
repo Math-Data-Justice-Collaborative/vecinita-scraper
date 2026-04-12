@@ -103,7 +103,9 @@ class PostgresDB:
         self.database_url = (database_url or config.postgres.database_url).strip()
         self.connect_timeout = connect_timeout
         if not self.database_url:
-            raise DatabaseError("DATABASE_URL is required for scraper persistence")
+            raise DatabaseError(
+                "Postgres DSN is required for scraper persistence (DATABASE_URL or DB_URL)"
+            )
         if psycopg2 is None or Json is None or RealDictCursor is None:
             raise DatabaseError(
                 "psycopg2-binary is not installed. Install project dependencies "

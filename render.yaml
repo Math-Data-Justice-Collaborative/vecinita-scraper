@@ -11,6 +11,8 @@ services:
     autoDeployTrigger: checksPass
     healthCheckPath: /health
     envVars:
+      # Do not define a second Postgres here — shared DB lives in monorepo root render.yaml.
+      # Standalone deploy from this file: set DATABASE_URL in the Render dashboard (internal URL).
       - key: DATABASE_URL
         sync: false
       - key: MODAL_TOKEN_ID

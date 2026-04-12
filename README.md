@@ -28,6 +28,8 @@ make deploy
 
 This service also ships with a Dockerfile and `render.yaml` for a Render Docker web-service deploy.
 
+The root monorepo [`render.yaml`](../../render.yaml) injects `DATABASE_URL` for `vecinita-data-management-api-v1` from the single shared `vecinita-postgres` resource via `fromDatabase`. This directory’s [`render.yaml`](render.yaml) is for optional **standalone** Render deploys only: it does **not** provision a second database—set `DATABASE_URL` in the dashboard to your Postgres internal URL (or deploy from the repo root blueprint). If you run the same FastAPI image on **Modal**, add **`DATABASE_URL`** to the Modal secret group your deploy references so `vecinita_scraper` can validate and connect.
+
 Required environment variables for the Docker deployment:
 
 - `DATABASE_URL`
@@ -55,7 +57,8 @@ docker run --rm -p 10000:10000 \
 
 ## Runtime requirements
 
-- `DATABASE_URL`
+- `DATABASE_URL` (canonical Postgres DSN)
+- `DB_URL` (optional; used only if `DATABASE_URL` is empty, same string otherwise)
 - `VECINITA_EMBEDDING_API_URL`
 - `VECINITA_MODEL_API_URL` when model-assisted extraction is enabled
 - Modal credentials for deploy operations
