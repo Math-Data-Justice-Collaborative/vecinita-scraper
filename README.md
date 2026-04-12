@@ -24,6 +24,22 @@ modal auth login
 make deploy
 ```
 
+### Render + Modal CLI (auth / secrets)
+
+From the monorepo root, after `render login` and `modal` auth:
+
+```bash
+# Discover vecinita-data-management-api-v1 and dry-run PATCH of SCRAPER_API_KEYS from .env.prod.render
+./scripts/sync_scraper_auth_render_modal.sh render --dotenv .env.prod.render --dry-run
+export RENDER_API_KEY=...
+./scripts/sync_scraper_auth_render_modal.sh render --dotenv .env.prod.render --yes
+
+# Push / replace Modal secret vecinita-scraper-env (include all required keys in the file)
+modal secret create vecinita-scraper-env --from-dotenv path/to/full-scraper-secret.env --force
+# or the same via wrapper:
+./scripts/sync_scraper_auth_render_modal.sh modal --from-dotenv path/to/full-scraper-secret.env --force
+```
+
 ### Docker deploy
 
 This service also ships with a Dockerfile and `render.yaml` for a Render Docker web-service deploy.
