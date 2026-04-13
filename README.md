@@ -17,6 +17,10 @@ make test
 make serve
 ```
 
+`make test` and related test targets run with
+`PYTHONWARNINGS=ignore:::requests` to suppress known non-blocking
+`RequestsDependencyWarning` noise from `requests` import-time checks.
+
 ## Deployment
 
 ```bash

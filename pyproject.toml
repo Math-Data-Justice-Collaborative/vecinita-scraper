@@ -74,6 +74,7 @@ markers = [
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
+    "ignore::requests.exceptions.RequestsDependencyWarning",
 ]
 
 [tool.coverage.run]

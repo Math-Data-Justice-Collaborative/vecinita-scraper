@@ -1,6 +1,7 @@
 .PHONY: help install dev-install lint format type-check test test-unit test-integration test-live test-cov clean deploy serve
 
 PYTHON_BIN ?= $(shell command -v python3.11 >/dev/null 2>&1 && echo python3.11 || echo python3)
+PYTHONWARNINGS ?= ignore:::requests
 
 help:
 	@echo "Vecinita Scraper Development Commands"
@@ -46,19 +47,19 @@ type-check:
 	mypy src/
 
 test:
-	pytest -m "not live" -v
+	PYTHONWARNINGS="$(PYTHONWARNINGS)" pytest -m "not live" -v
 
 test-unit:
-	pytest tests/unit/ -v
+	PYTHONWARNINGS="$(PYTHONWARNINGS)" pytest tests/unit/ -v
 
 test-integration:
-	pytest tests/integration/ -v
+	PYTHONWARNINGS="$(PYTHONWARNINGS)" pytest tests/integration/ -v
 
 test-live:
-	pytest -m live -v || ([ $$? -eq 5 ] && echo "No live tests collected; treating as success.")
+	PYTHONWARNINGS="$(PYTHONWARNINGS)" pytest -m live -v || ([ $$? -eq 5 ] && echo "No live tests collected; treating as success.")
 
 test-cov:
-	pytest --cov=src/vecinita_scraper --cov-report=html --cov-report=term-missing
+	PYTHONWARNINGS="$(PYTHONWARNINGS)" pytest --cov=src/vecinita_scraper --cov-report=html --cov-report=term-missing
 
 clean:
 	find . -type f -name "*.pyc" -delete
