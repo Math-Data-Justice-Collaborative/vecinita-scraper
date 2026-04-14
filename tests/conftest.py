@@ -9,6 +9,14 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# `EmbeddingClient` and other code paths call `get_config()`, which validates Postgres.
+# Unit/integration tests here use mocks and do not need a real database; CI often runs
+# without DATABASE_URL/DB_URL set (matches standalone vecinita-scraper Actions).
+_db_url = (os.environ.get("DATABASE_URL") or "").strip()
+_db_fallback = (os.environ.get("DB_URL") or "").strip()
+if not _db_url and not _db_fallback:
+    os.environ["DATABASE_URL"] = "postgresql://test:test@127.0.0.1:5432/postgres"
+
 
 @pytest.fixture
 def mock_config():

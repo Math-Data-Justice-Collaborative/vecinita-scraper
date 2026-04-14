@@ -16,7 +16,10 @@ jobs:
   test:
     name: Test & Lint
     runs-on: ubuntu-latest
-    
+    env:
+      # Validation-only default; tests use mocks and do not connect unless opted in.
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/postgres
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
