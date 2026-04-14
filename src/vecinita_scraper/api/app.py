@@ -37,7 +37,6 @@ image = (
 @modal.asgi_app()
 def fastapi() -> object:
     """ASGI entrypoint for Modal to serve the FastAPI scraper API."""
-    """ASGI entrypoint for Modal to serve the FastAPI scraper API."""
     return fastapi_app
 
 
