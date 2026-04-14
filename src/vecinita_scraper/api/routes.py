@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import ValidationError
 
 from vecinita_scraper.app import scrape_jobs_queue
@@ -13,10 +13,16 @@ from vecinita_scraper.core.db import PostgresDB
 from vecinita_scraper.core.errors import DatabaseError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import (
+    OPENAPI_EXAMPLE_JOB_ID,
     ChunkingConfig,
     CrawlConfig,
     JobStatus,
     JobStatusResponse,
+    ScrapeJobCancelResponse,
+    ScrapeJobCreatedResponse,
+    ScrapeJobListItem,
+    ScrapeJobListQueryParams,
+    ScrapeJobListResponse,
     ScrapeJobQueueData,
     ScrapeJobRequest,
 )
@@ -35,12 +41,12 @@ def _coerce_datetime(value: Any) -> datetime:
 
 @router.post(
     "",
-    response_model=dict[str, Any],
+    response_model=ScrapeJobCreatedResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Submit a new scraping job",
     description="Enqueues a URL for scraping and begins the job processing pipeline.",
 )
-async def submit_job(request: ScrapeJobRequest) -> dict[str, Any]:
+async def submit_job(request: ScrapeJobRequest) -> ScrapeJobCreatedResponse:
     """
     Submit a new scraping job.
 
@@ -93,12 +99,12 @@ async def submit_job(request: ScrapeJobRequest) -> dict[str, Any]:
 
         await scrape_jobs_queue.put.aio(scrape_payload.model_dump())
 
-        return {
-            "job_id": job_id,
-            "status": JobStatus.PENDING,
-            "created_at": datetime.utcnow().isoformat(),
-            "url": str(request.url),
-        }
+        return ScrapeJobCreatedResponse(
+            job_id=job_id,
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow().isoformat(),
+            url=str(request.url),
+        )
 
     except DatabaseError as e:
         logger.exception("Database error during job submission", error=str(e))
@@ -126,7 +132,16 @@ async def submit_job(request: ScrapeJobRequest) -> dict[str, Any]:
     summary="Get job status",
     description="Retrieve the current status and progress of a scraping job.",
 )
-async def get_job_status(job_id: str) -> JobStatusResponse:
+async def get_job_status(
+    job_id: Annotated[
+        str,
+        Path(
+            ...,
+            description="UUID of the scraping job",
+            examples=[OPENAPI_EXAMPLE_JOB_ID],
+        ),
+    ],
+) -> JobStatusResponse:
     """
     Get the status of a scraping job.
 
@@ -200,24 +215,13 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
 
 @router.get(
     "",
-    response_model=dict[str, Any],
+    response_model=ScrapeJobListResponse,
     summary="List jobs",
     description="List recent scraping jobs (limited to last 50).",
 )
 async def list_jobs(
-    user_id: str | None = Query(
-        default=None,
-        description="When set, only jobs created by this user id are returned.",
-        examples=["operator-42"],
-    ),
-    limit: int = Query(
-        default=50,
-        ge=1,
-        le=100,
-        description="Maximum rows to return (inclusive, capped at 100).",
-        examples=[25],
-    ),
-) -> dict[str, Any]:
+    params: Annotated[ScrapeJobListQueryParams, Depends()],
+) -> ScrapeJobListResponse:
     """
     List recent scraping jobs.
 
@@ -231,21 +235,16 @@ async def list_jobs(
     Raises:
         HTTPException: For invalid parameters or database errors
     """
-    if limit < 1 or limit > 100:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="limit must be between 1 and 100",
-        )
-
     try:
         db = PostgresDB()
-        result = await db.list_jobs(user_id=user_id, limit=limit)
-        return {
-            "user_id": user_id,
-            "limit": limit,
-            "jobs": result["jobs"],
-            "total": result["total"],
-        }
+        result = await db.list_jobs(user_id=params.user_id, limit=params.limit)
+        jobs = [ScrapeJobListItem.model_validate(row) for row in result["jobs"]]
+        return ScrapeJobListResponse(
+            user_id=params.user_id,
+            limit=params.limit,
+            jobs=jobs,
+            total=result["total"],
+        )
 
     except DatabaseError as e:
         logger.exception("Database error listing jobs", error=str(e))
@@ -263,11 +262,20 @@ async def list_jobs(
 
 @router.post(
     "/{job_id}/cancel",
-    response_model=dict[str, Any],
+    response_model=ScrapeJobCancelResponse,
     summary="Cancel a job",
     description="Cancel a scraping job if it hasn't completed.",
 )
-async def cancel_job(job_id: str) -> dict[str, Any]:
+async def cancel_job(
+    job_id: Annotated[
+        str,
+        Path(
+            ...,
+            description="UUID of the scraping job",
+            examples=[OPENAPI_EXAMPLE_JOB_ID],
+        ),
+    ],
+) -> ScrapeJobCancelResponse:
     """
     Cancel a scraping job.
 
@@ -309,11 +317,11 @@ async def cancel_job(job_id: str) -> dict[str, Any]:
 
         logger.info("Job cancelled", job_id=job_id, previous_status=current_status.value)
 
-        return {
-            "job_id": job_id,
-            "previous_status": current_status.value,
-            "new_status": JobStatus.CANCELLED.value,
-        }
+        return ScrapeJobCancelResponse(
+            job_id=job_id,
+            previous_status=current_status.value,
+            new_status=JobStatus.CANCELLED.value,
+        )
 
     except HTTPException:
         raise

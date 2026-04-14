@@ -99,7 +99,36 @@ class ScrapeJobRequest(BaseModel):
                     "crawl_config": {"max_depth": 2, "timeout_seconds": 90},
                     "chunking_config": {"min_size_tokens": 300, "max_size_tokens": 900},
                     "metadata": {"source": "schemathesis-example"},
-                }
+                },
+                {
+                    "url": "https://city.gov/housing/programs",
+                    "user_id": "tenant-portal-01",
+                    "crawl_config": None,
+                    "chunking_config": None,
+                    "llm_extraction_prompt": "Extract program names and eligibility bullets.",
+                    "metadata": {"priority": "high"},
+                },
+                {
+                    "url": "https://health.example/clinics/walk-in",
+                    "user_id": "operator-42",
+                    "crawl_config": {"max_depth": 1, "timeout_seconds": 120, "headless": True},
+                    "chunking_config": {"overlap_ratio": 0.15, "split_by_sentence": True},
+                    "metadata": None,
+                },
+                {
+                    "url": "https://schools.example/enrollment-2026",
+                    "user_id": "district-batch-7",
+                    "crawl_config": {"max_depth": 4, "include_images": False},
+                    "chunking_config": {"min_size_tokens": 200, "max_size_tokens": 1024},
+                    "metadata": {"run": "nightly"},
+                },
+                {
+                    "url": "https://transit.example/riders-guide",
+                    "user_id": "mobility-team",
+                    "crawl_config": {"wait_for_content": True, "include_links": True},
+                    "chunking_config": None,
+                    "metadata": {"locale": "en"},
+                },
             ]
         }
     )
@@ -189,6 +218,73 @@ class EmbeddingData(BaseModel):
 class JobStatusResponse(BaseModel):
     """Current status of a scraping job."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "status": "crawling",
+                    "progress_pct": 25,
+                    "current_step": "crawl",
+                    "error_message": None,
+                    "updated_at": "2024-02-09T10:05:00Z",
+                    "created_at": "2024-02-09T10:00:00Z",
+                    "crawl_url_count": 3,
+                    "chunk_count": 0,
+                    "embedding_count": 0,
+                },
+                {
+                    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "status": "completed",
+                    "progress_pct": 100,
+                    "current_step": "done",
+                    "error_message": None,
+                    "updated_at": "2024-02-09T10:30:00Z",
+                    "created_at": "2024-02-09T10:00:00Z",
+                    "crawl_url_count": 12,
+                    "chunk_count": 40,
+                    "embedding_count": 40,
+                },
+                {
+                    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "status": "failed",
+                    "progress_pct": 10,
+                    "current_step": "extract",
+                    "error_message": "Extraction timeout",
+                    "updated_at": "2024-02-09T10:08:00Z",
+                    "created_at": "2024-02-09T10:00:00Z",
+                    "crawl_url_count": 1,
+                    "chunk_count": 0,
+                    "embedding_count": 0,
+                },
+                {
+                    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "status": "pending",
+                    "progress_pct": 0,
+                    "current_step": "queued",
+                    "error_message": None,
+                    "updated_at": "2024-02-09T10:00:00Z",
+                    "created_at": "2024-02-09T10:00:00Z",
+                    "crawl_url_count": 0,
+                    "chunk_count": 0,
+                    "embedding_count": 0,
+                },
+                {
+                    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "status": "cancelled",
+                    "progress_pct": 50,
+                    "current_step": "chunking",
+                    "error_message": None,
+                    "updated_at": "2024-02-09T10:15:00Z",
+                    "created_at": "2024-02-09T10:00:00Z",
+                    "crawl_url_count": 5,
+                    "chunk_count": 10,
+                    "embedding_count": 0,
+                },
+            ]
+        }
+    )
+
     job_id: str
     status: JobStatus
     progress_pct: int = Field(ge=0, le=100)
@@ -270,3 +366,236 @@ class StoreJobQueueData(BaseModel):
     job_id: str
     embedding_ids: list[str]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# --- OpenAPI-friendly HTTP envelopes (public scraper API) ---
+
+OPENAPI_EXAMPLE_JOB_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+
+class ScraperHealthResponse(BaseModel):
+    """JSON body for ``GET /health``."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"status": "ok", "service": "vecinita-scraper"},
+                {"status": "ok", "service": "vecinita-scraper-staging"},
+                {"status": "degraded", "service": "vecinita-scraper"},
+                {"status": "ok", "service": "vecinita-scraper-canary"},
+                {"status": "error", "service": "vecinita-scraper"},
+            ],
+        }
+    )
+
+    status: str = Field(..., description="Liveness flag.", examples=["ok"])
+    service: str = Field(
+        ...,
+        description="Logical service name for operators.",
+        examples=["vecinita-scraper"],
+    )
+
+
+class ScrapeJobCreatedResponse(BaseModel):
+    """Response for ``POST /jobs`` when a job is enqueued."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "status": "pending",
+                    "created_at": "2024-02-09T10:00:00",
+                    "url": "https://example.org/community-resources",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "status": "pending",
+                    "created_at": "2024-02-09T11:00:00",
+                    "url": "https://city.gov/housing",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "status": "pending",
+                    "created_at": "2024-02-09T12:00:00",
+                    "url": "https://health.example/clinics",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "status": "pending",
+                    "created_at": "2024-02-09T13:00:00",
+                    "url": "https://schools.example/enrollment",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "status": "pending",
+                    "created_at": "2024-02-09T14:00:00",
+                    "url": "https://transit.example/schedules",
+                },
+            ]
+        }
+    )
+
+    job_id: str = Field(..., description="New job UUID.", examples=[OPENAPI_EXAMPLE_JOB_ID])
+    status: JobStatus = Field(
+        ...,
+        description="Initial pipeline status.",
+        examples=[JobStatus.PENDING],
+    )
+    created_at: str = Field(
+        ...,
+        description="Creation timestamp (ISO 8601).",
+        examples=["2024-02-09T10:00:00"],
+    )
+    url: str = Field(..., description="Seed URL for the crawl.", examples=["https://example.org/"])
+
+
+class ScrapeJobListItem(BaseModel):
+    """One row from ``GET /jobs`` (mirrors ``_JOB_DETAIL_SELECT`` serialization)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str = Field(..., description="Job UUID.", examples=[OPENAPI_EXAMPLE_JOB_ID])
+    user_id: str = Field(..., examples=["operator-42"])
+    url: str = Field(..., examples=["https://example.org/community-resources"])
+    status: str = Field(..., examples=["pending"])
+    crawl_config: dict[str, Any] | None = None
+    chunking_config: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+    error_message: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    crawl_url_count: int = Field(default=0, examples=[0])
+    chunk_count: int = Field(default=0, examples=[0])
+    embedding_count: int = Field(default=0, examples=[0])
+
+
+class ScrapeJobListResponse(BaseModel):
+    """Response for ``GET /jobs``."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "user_id": "operator-42",
+                    "limit": 25,
+                    "jobs": [],
+                    "total": 0,
+                },
+                {
+                    "user_id": None,
+                    "limit": 50,
+                    "jobs": [],
+                    "total": 0,
+                },
+                {
+                    "user_id": "tenant-portal-01",
+                    "limit": 10,
+                    "jobs": [
+                        {
+                            "id": OPENAPI_EXAMPLE_JOB_ID,
+                            "user_id": "tenant-portal-01",
+                            "url": "https://example.org/a",
+                            "status": "completed",
+                            "crawl_config": None,
+                            "chunking_config": None,
+                            "metadata": None,
+                            "error_message": None,
+                            "created_at": "2024-02-09T10:00:00",
+                            "updated_at": "2024-02-09T10:20:00",
+                            "crawl_url_count": 5,
+                            "chunk_count": 20,
+                            "embedding_count": 20,
+                        }
+                    ],
+                    "total": 1,
+                },
+                {
+                    "user_id": "mobility-team",
+                    "limit": 100,
+                    "jobs": [],
+                    "total": 0,
+                },
+                {
+                    "user_id": "district-batch-7",
+                    "limit": 1,
+                    "jobs": [],
+                    "total": 50,
+                },
+            ]
+        }
+    )
+
+    user_id: str | None = Field(default=None, examples=["operator-42"])
+    limit: int = Field(..., ge=1, le=100, examples=[25])
+    jobs: list[ScrapeJobListItem] = Field(default_factory=list)
+    total: int = Field(..., ge=0, examples=[0])
+
+
+class ScrapeJobCancelResponse(BaseModel):
+    """Response for ``POST /jobs/{job_id}/cancel``."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "previous_status": "crawling",
+                    "new_status": "cancelled",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "previous_status": "pending",
+                    "new_status": "cancelled",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "previous_status": "chunking",
+                    "new_status": "cancelled",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "previous_status": "embedding",
+                    "new_status": "cancelled",
+                },
+                {
+                    "job_id": OPENAPI_EXAMPLE_JOB_ID,
+                    "previous_status": "validating",
+                    "new_status": "cancelled",
+                },
+            ]
+        }
+    )
+
+    job_id: str = Field(..., examples=[OPENAPI_EXAMPLE_JOB_ID])
+    previous_status: str = Field(..., examples=["crawling"])
+    new_status: str = Field(..., examples=["cancelled"])
+
+
+class ScrapeJobListQueryParams(BaseModel):
+    """Query parameters for ``GET /jobs``."""
+
+    user_id: str | None = Field(
+        default=None,
+        description="When set, only jobs created by this user id are returned.",
+        examples=["operator-42"],
+    )
+    limit: int = Field(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum rows to return (inclusive, capped at 100).",
+        examples=[25],
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"user_id": None, "limit": 50},
+                {"user_id": "operator-42", "limit": 25},
+                {"user_id": "tenant-portal-01", "limit": 100},
+                {"user_id": "mobility-team", "limit": 10},
+                {"user_id": "district-batch-7", "limit": 1},
+            ]
+        }
+    )

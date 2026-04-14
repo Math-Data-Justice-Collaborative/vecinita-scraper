@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from vecinita_scraper.api.routes import router as jobs_router
 from vecinita_scraper.core.config import get_config
 from vecinita_scraper.core.logger import get_logger
+from vecinita_scraper.core.models import ScraperHealthResponse
 
 logger = get_logger(__name__)
 _PUBLIC_PATHS = {"/health", "/openapi.json", "/docs", "/redoc"}
@@ -118,10 +119,10 @@ def create_app() -> FastAPI:
         )
         return response
 
-    @app.get("/health", tags=["health"])
-    async def health() -> dict[str, str]:
+    @app.get("/health", response_model=ScraperHealthResponse, tags=["health"])
+    async def health() -> ScraperHealthResponse:
         """Health check endpoint."""
-        return {"status": "ok", "service": "vecinita-scraper"}
+        return ScraperHealthResponse(status="ok", service="vecinita-scraper")
 
     app.include_router(jobs_router)
 
