@@ -117,7 +117,7 @@ class EmbeddingClient:
         self, method: str, path: str, json: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Send an HTTP request to the embedding service."""
-        if _truthy(get_config().api.modal_function_invocation):
+        if get_config().api.modal_function_invocation:
             return await self._modal_request(method, path, json)
 
         try:
@@ -153,7 +153,7 @@ class EmbeddingClient:
         app_name = cfg.modal_embedding_app_name
         env_name = (cfg.modal_environment_name or "").strip() or None
 
-        def _fn(name: str):
+        def _fn(name: str) -> Any:
             if env_name:
                 return modal.Function.from_name(
                     app_name, name, environment_name=env_name
@@ -178,7 +178,7 @@ class EmbeddingClient:
             fn = _fn(cfg.modal_embedding_batch_function)
             payload = json or {}
             queries = payload.get("queries", [])
-            result = await fn.remote.aio(queries)
+            result = cast(dict[str, Any], await fn.remote.aio(queries))
             # Modal function returns ``dimension``; HTTP API uses ``dimensions``.
             if "dimensions" not in result and "dimension" in result:
                 result = {**result, "dimensions": result["dimension"]}
