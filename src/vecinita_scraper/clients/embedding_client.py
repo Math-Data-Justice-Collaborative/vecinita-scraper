@@ -13,17 +13,21 @@ from vecinita_scraper.core.models import EmbeddingModelConfig
 logger = get_logger(__name__)
 
 
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 class EmbeddingClient:
     """Async client for fetching model metadata and embedding text batches."""
 
     def __init__(self, base_url: str | None = None, api_token: str | None = None) -> None:
+        config = get_config()
         if base_url is None:
-            config = get_config()
             resolved_base_url = base_url or config.api.vecinita_embedding_api_url
         else:
             resolved_base_url = base_url
 
-        if not resolved_base_url:
+        if not resolved_base_url and not _truthy(str(config.api.modal_function_invocation)):
             raise EmbeddingError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
 
         self._base_url = resolved_base_url.rstrip("/")
@@ -113,6 +117,9 @@ class EmbeddingClient:
         self, method: str, path: str, json: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Send an HTTP request to the embedding service."""
+        if _truthy(get_config().api.modal_function_invocation):
+            return await self._modal_request(method, path, json)
+
         try:
             import httpx
         except ImportError as exc:
@@ -132,6 +139,52 @@ class EmbeddingClient:
         except Exception as exc:
             logger.exception("Embedding API request failed", method=method, url=url)
             raise EmbeddingError(f"Embedding API request failed: {exc}") from exc
+
+    async def _modal_request(
+        self, method: str, path: str, json: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Invoke embedding workloads via ``modal.Function.from_name`` (Modal 1.x), not HTTP."""
+        try:
+            import modal
+        except Exception as exc:
+            raise EmbeddingError("Modal invocation requested but modal SDK is unavailable") from exc
+
+        cfg = get_config().api
+        app_name = cfg.modal_embedding_app_name
+        env_name = (cfg.modal_environment_name or "").strip() or None
+
+        def _fn(name: str):
+            if env_name:
+                return modal.Function.from_name(
+                    app_name, name, environment_name=env_name
+                )
+            return modal.Function.from_name(app_name, name)
+
+        if method == "GET" and path == "/":
+            # Mirror ``invoke_modal_embedding_single`` / ``embed_query`` payload shape.
+            fn = _fn(cfg.modal_embedding_single_function)
+            probe = await fn.remote.aio("health")
+            dim = int(probe.get("dimension", 384))
+            model_name = str(probe.get("model", "BAAI/bge-small-en-v1.5"))
+            return {
+                "model": model_name,
+                "dimensions": dim,
+                "embedding_dimensions": dim,
+                "max_tokens": 1024,
+                "batch_size": 100,
+            }
+
+        if method == "POST" and path == "/embed/batch":
+            fn = _fn(cfg.modal_embedding_batch_function)
+            payload = json or {}
+            queries = payload.get("queries", [])
+            result = await fn.remote.aio(queries)
+            # Modal function returns ``dimension``; HTTP API uses ``dimensions``.
+            if "dimensions" not in result and "dimension" in result:
+                result = {**result, "dimensions": result["dimension"]}
+            return result
+
+        raise EmbeddingError(f"Unsupported modal embedding request shape: {method} {path}")
 
     @staticmethod
     def _infer_max_tokens(dimensions: int) -> int:

@@ -98,6 +98,11 @@ class APIConfig:
 
     vecinita_model_api_url: str
     vecinita_embedding_api_url: str
+    modal_function_invocation: bool
+    modal_embedding_app_name: str
+    modal_embedding_single_function: str
+    modal_embedding_batch_function: str
+    modal_environment_name: str
 
     @staticmethod
     def from_env() -> "APIConfig":
@@ -105,15 +110,22 @@ class APIConfig:
         return APIConfig(
             vecinita_model_api_url=_env("VECINITA_MODEL_API_URL"),
             vecinita_embedding_api_url=_env("VECINITA_EMBEDDING_API_URL"),
+            modal_function_invocation=_env_bool("MODAL_FUNCTION_INVOCATION", default=False),
+            modal_embedding_app_name=_env("MODAL_EMBEDDING_APP_NAME", "vecinita-embedding"),
+            modal_embedding_single_function=_env(
+                "MODAL_EMBEDDING_SINGLE_FUNCTION", "embed_query"
+            ),
+            modal_embedding_batch_function=_env(
+                "MODAL_EMBEDDING_BATCH_FUNCTION", "embed_batch"
+            ),
+            modal_environment_name=_env("MODAL_ENVIRONMENT_NAME") or _env("MODAL_ENV", ""),
         )
 
     def validate(self) -> None:
         """Validate API config."""
-        if not all(
-            [
-                self.vecinita_embedding_api_url,
-            ]
-        ):
+        if self.modal_function_invocation:
+            return
+        if not all([self.vecinita_embedding_api_url]):
             raise ConfigError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
 
 

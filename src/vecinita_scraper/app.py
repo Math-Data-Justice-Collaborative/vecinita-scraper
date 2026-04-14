@@ -142,6 +142,23 @@ def health_check() -> dict[str, str]:
     return {"status": "ok", "worker": "vecinita-scraper"}
 
 
+@app.function(secrets=APP_SECRETS)
+def trigger_reindex(
+    clean: bool = False, stream: bool = True, verbose: bool = False
+) -> dict[str, Any]:
+    """Queue-oriented reindex trigger for non-HTTP Modal invocation."""
+    _ = clean
+    _ = stream
+    _ = verbose
+    return {
+        "status": "accepted",
+        "mode": "modal-function",
+        "clean": clean,
+        "stream": stream,
+        "verbose": verbose,
+    }
+
+
 # Import worker modules after the shared app and queues are defined so Modal
 # registers decorated functions during deployment.
 from vecinita_scraper.workers import chunker as _chunker  # noqa: E402,F401
