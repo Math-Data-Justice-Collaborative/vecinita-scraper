@@ -146,12 +146,7 @@ def health_check() -> dict[str, str]:
 def trigger_reindex(
     clean: bool = False, stream: bool = True, verbose: bool = False
 ) -> dict[str, Any]:
-    """Queue-oriented reindex trigger for non-HTTP Modal invocation.
-
-    This lightweight function is intentionally cheap: it records invocation
-    intent and returns immediately so callers (gateway/data-management) don't
-    keep an always-on web endpoint alive.
-    """
+    """Queue-oriented reindex trigger for non-HTTP Modal invocation."""
     _ = clean
     _ = stream
     _ = verbose
