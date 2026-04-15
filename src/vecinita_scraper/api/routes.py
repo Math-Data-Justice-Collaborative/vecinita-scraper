@@ -2,41 +2,34 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import ValidationError
 
 from vecinita_scraper.app import scrape_jobs_queue
-from vecinita_scraper.core.db import PostgresDB
 from vecinita_scraper.core.errors import DatabaseError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import (
     OPENAPI_EXAMPLE_JOB_ID,
-    ChunkingConfig,
-    CrawlConfig,
-    JobStatus,
     JobStatusResponse,
     ScrapeJobCancelResponse,
     ScrapeJobCreatedResponse,
-    ScrapeJobListItem,
     ScrapeJobListQueryParams,
     ScrapeJobListResponse,
-    ScrapeJobQueueData,
     ScrapeJobRequest,
+)
+from vecinita_scraper.services.job_control import (
+    JobConflictError,
+    JobNotFoundError,
+    cancel_scrape_job,
+    get_scrape_job_status,
+    list_scrape_jobs,
+    submit_scrape_job,
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger(__name__)
-
-
-def _coerce_datetime(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value)
-    return datetime.utcnow()
 
 
 @router.post(
@@ -47,65 +40,9 @@ def _coerce_datetime(value: Any) -> datetime:
     description="Enqueues a URL for scraping and begins the job processing pipeline.",
 )
 async def submit_job(request: ScrapeJobRequest) -> ScrapeJobCreatedResponse:
-    """
-    Submit a new scraping job.
-
-    The job will be enqueued for:
-    1. Web crawling (Crawl4AI)
-    2. Document processing (Docling)
-    3. Semantic chunking
-    4. Embedding generation
-    5. Final storage
-
-    Args:
-        request: ScrapeJobRequest with URL, configs, and user_id
-
-    Returns:
-        dict with job_id, status, and created_at
-
-    Raises:
-        HTTPException: For invalid input or database errors
-    """
+    """Submit a new scraping job."""
     try:
-        db = PostgresDB()
-
-        # Use provided configs or defaults
-        crawl_config = request.crawl_config or CrawlConfig()
-        chunking_config = request.chunking_config or ChunkingConfig()
-
-        # Create job in database
-        job_id = await db.create_scraping_job(
-            url=str(request.url),
-            user_id=request.user_id,
-            crawl_config=crawl_config.model_dump(),
-            chunking_config=chunking_config.model_dump(),
-            metadata=request.metadata,
-        )
-
-        logger.info(
-            "Job submitted",
-            job_id=job_id,
-            url=str(request.url),
-            user_id=request.user_id,
-        )
-
-        # Enqueue for scraping
-        scrape_payload = ScrapeJobQueueData(
-            job_id=job_id,
-            url=str(request.url),
-            user_id=request.user_id,
-            crawl_config=crawl_config,
-        )
-
-        await scrape_jobs_queue.put.aio(scrape_payload.model_dump())
-
-        return ScrapeJobCreatedResponse(
-            job_id=job_id,
-            status=JobStatus.PENDING,
-            created_at=datetime.utcnow().isoformat(),
-            url=str(request.url),
-        )
-
+        return await submit_scrape_job(request, jobs_queue=scrape_jobs_queue)
     except DatabaseError as e:
         logger.exception("Database error during job submission", error=str(e))
         raise HTTPException(
@@ -142,63 +79,14 @@ async def get_job_status(
         ),
     ],
 ) -> JobStatusResponse:
-    """
-    Get the status of a scraping job.
-
-    Args:
-        job_id: UUID of the scraping job
-
-    Returns:
-        JobStatusResponse with current status, progress, and metadata
-
-    Raises:
-        HTTPException: For invalid job_id or database errors
-    """
+    """Get the status of a scraping job."""
     try:
-        db = PostgresDB()
-
-        # Get job from database
-        job_data = await db.get_job_status(job_id)
-
-        if not job_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job {job_id} not found",
-            )
-
-        # Calculate progress based on status
-        status_to_progress = {
-            JobStatus.PENDING: 5,
-            JobStatus.VALIDATING: 10,
-            JobStatus.CRAWLING: 20,
-            JobStatus.EXTRACTING: 35,
-            JobStatus.PROCESSING: 50,
-            JobStatus.CHUNKING: 65,
-            JobStatus.EMBEDDING: 80,
-            JobStatus.STORING: 95,
-            JobStatus.COMPLETED: 100,
-            JobStatus.FAILED: 0,
-            JobStatus.CANCELLED: 0,
-        }
-
-        current_status = JobStatus(job_data.get("status", JobStatus.PENDING))
-        progress_pct = status_to_progress.get(current_status, 0)
-
-        return JobStatusResponse(
-            job_id=job_id,
-            status=current_status,
-            progress_pct=progress_pct,
-            current_step=current_status.value,
-            error_message=job_data.get("error_message"),
-            updated_at=_coerce_datetime(job_data.get("updated_at")),
-            created_at=_coerce_datetime(job_data.get("created_at")),
-            crawl_url_count=job_data.get("crawl_url_count", 0),
-            chunk_count=job_data.get("chunk_count", 0),
-            embedding_count=job_data.get("embedding_count", 0),
-        )
-
-    except HTTPException:
-        raise
+        return await get_scrape_job_status(job_id)
+    except JobNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        ) from None
     except DatabaseError as e:
         logger.exception("Database error retrieving job status", job_id=job_id, error=str(e))
         raise HTTPException(
@@ -222,30 +110,9 @@ async def get_job_status(
 async def list_jobs(
     params: Annotated[ScrapeJobListQueryParams, Depends()],
 ) -> ScrapeJobListResponse:
-    """
-    List recent scraping jobs.
-
-    Args:
-        user_id: Filter by user_id (optional)
-        limit: Maximum number of jobs to return (1-100, default 50)
-
-    Returns:
-        dict with list of jobs and total count
-
-    Raises:
-        HTTPException: For invalid parameters or database errors
-    """
+    """List recent scraping jobs."""
     try:
-        db = PostgresDB()
-        result = await db.list_jobs(user_id=params.user_id, limit=params.limit)
-        jobs = [ScrapeJobListItem.model_validate(row) for row in result["jobs"]]
-        return ScrapeJobListResponse(
-            user_id=params.user_id,
-            limit=params.limit,
-            jobs=jobs,
-            total=result["total"],
-        )
-
+        return await list_scrape_jobs(params)
     except DatabaseError as e:
         logger.exception("Database error listing jobs", error=str(e))
         raise HTTPException(
@@ -276,55 +143,19 @@ async def cancel_job(
         ),
     ],
 ) -> ScrapeJobCancelResponse:
-    """
-    Cancel a scraping job.
-
-    Can only cancel jobs that haven't reached COMPLETED, FAILED, or CANCELLED status.
-
-    Args:
-        job_id: UUID of the scraping job
-
-    Returns:
-        dict with job_id, previous_status, and new_status
-
-    Raises:
-        HTTPException: For invalid job_id, database errors, or if job can't be cancelled
-    """
+    """Cancel a scraping job."""
     try:
-        db = PostgresDB()
-
-        # Get current job status
-        job_data = await db.get_job_status(job_id)
-
-        if not job_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job {job_id} not found",
-            )
-
-        current_status = JobStatus(job_data.get("status", JobStatus.PENDING))
-
-        # Check if job can be cancelled
-        non_cancellable_statuses = {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}
-        if current_status in non_cancellable_statuses:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Cannot cancel job with status {current_status.value}",
-            )
-
-        # Update status to CANCELLED
-        await db.update_job_status(job_id, JobStatus.CANCELLED.value)
-
-        logger.info("Job cancelled", job_id=job_id, previous_status=current_status.value)
-
-        return ScrapeJobCancelResponse(
-            job_id=job_id,
-            previous_status=current_status.value,
-            new_status=JobStatus.CANCELLED.value,
-        )
-
-    except HTTPException:
-        raise
+        return await cancel_scrape_job(job_id)
+    except JobNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        ) from None
+    except JobConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
     except DatabaseError as e:
         logger.exception("Database error cancelling job", job_id=job_id, error=str(e))
         raise HTTPException(

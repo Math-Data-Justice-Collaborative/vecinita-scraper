@@ -142,20 +142,85 @@ def health_check() -> dict[str, str]:
     return {"status": "ok", "worker": "vecinita-scraper"}
 
 
-@app.function(secrets=APP_SECRETS)
+@app.function(image=image, secrets=APP_SECRETS, timeout=300)
+def modal_scrape_job_submit(payload: dict[str, Any]) -> dict[str, Any]:
+    """Create a scraping job (Postgres + scrape-jobs queue); for Modal RPC callers."""
+    from vecinita_scraper.services.job_control import modal_job_submit
+
+    return modal_job_submit(payload, jobs_queue=scrape_jobs_queue)
+
+
+@app.function(image=image, secrets=APP_SECRETS, timeout=120)
+def modal_scrape_job_get(job_id: str) -> dict[str, Any]:
+    """Return job status JSON envelope for Modal RPC callers."""
+    from vecinita_scraper.services.job_control import modal_job_get
+
+    return modal_job_get(job_id)
+
+
+@app.function(image=image, secrets=APP_SECRETS, timeout=120)
+def modal_scrape_job_list(user_id: str | None = None, limit: int = 50) -> dict[str, Any]:
+    """List jobs JSON envelope for Modal RPC callers."""
+    from vecinita_scraper.services.job_control import modal_job_list
+
+    return modal_job_list(user_id, limit)
+
+
+@app.function(image=image, secrets=APP_SECRETS, timeout=120)
+def modal_scrape_job_cancel(job_id: str) -> dict[str, Any]:
+    """Cancel job JSON envelope for Modal RPC callers."""
+    from vecinita_scraper.services.job_control import modal_job_cancel
+
+    return modal_job_cancel(job_id)
+
+
+@app.function(image=image, secrets=APP_SECRETS, timeout=60)
 def trigger_reindex(
     clean: bool = False, stream: bool = True, verbose: bool = False
 ) -> dict[str, Any]:
-    """Queue-oriented reindex trigger for non-HTTP Modal invocation."""
-    _ = clean
+    """Kick pipeline drainers so queued work continues (Modal-native reindex trigger).
+
+    ``clean=True`` is not implemented here (no DB wipe); use the legacy backend
+    Modal cron app if a full clean reindex is required.
+    """
+    import os
+
     _ = stream
     _ = verbose
+
+    from vecinita_scraper.workers.chunker import drain_chunk_queue
+    from vecinita_scraper.workers.embedder import drain_embed_queue
+    from vecinita_scraper.workers.finalizer import drain_store_queue
+    from vecinita_scraper.workers.processor import drain_process_queue
+    from vecinita_scraper.workers.scraper import drain_scrape_queue
+
+    batch_raw = os.getenv("MODAL_REINDEX_DRAIN_BATCH", "25").strip()
+    try:
+        batch_size = max(1, min(500, int(batch_raw)))
+    except ValueError:
+        batch_size = 25
+
+    spawned: list[str] = []
+    for name, fn in (
+        ("drain_scrape_queue", drain_scrape_queue),
+        ("drain_process_queue", drain_process_queue),
+        ("drain_chunk_queue", drain_chunk_queue),
+        ("drain_embed_queue", drain_embed_queue),
+        ("drain_store_queue", drain_store_queue),
+    ):
+        fn.spawn(batch_size=batch_size)
+        spawned.append(name)
+
     return {
         "status": "accepted",
         "mode": "modal-function",
         "clean": clean,
+        "clean_applied": False,
         "stream": stream,
         "verbose": verbose,
+        "spawned_drains": spawned,
+        "batch_size": batch_size,
+        "message": "Spawned pipeline drain functions to process queued scrape/embed/store work.",
     }
 
 
