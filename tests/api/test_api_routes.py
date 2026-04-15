@@ -91,7 +91,7 @@ class TestAuthMiddleware:
         assert response.status_code == 403
         assert response.json()["detail"] == "Invalid API key"
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_accepts_valid_api_key(self, mock_db_class, auth_client, mock_db_for_api):
         """Protected routes accept configured API keys."""
         mock_db_class.return_value = mock_db_for_api
@@ -113,7 +113,7 @@ class TestAuthMiddleware:
 class TestSubmitJob:
     """Test job submission endpoint."""
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     @patch("vecinita_scraper.api.routes.scrape_jobs_queue")
     def test_submit_job_minimal(self, mock_queue, mock_db_class, client, mock_db_for_api):
         """Submit job with minimal config should succeed."""
@@ -136,7 +136,7 @@ class TestSubmitJob:
         assert "created_at" in data
         assert data["url"] == "https://example.com/"
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     @patch("vecinita_scraper.api.routes.scrape_jobs_queue")
     def test_submit_job_with_configs(self, mock_queue, mock_db_class, client, mock_db_for_api):
         """Submit job with custom crawl and chunking configs."""
@@ -194,7 +194,7 @@ class TestSubmitJob:
 
         assert response.status_code == 422
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_submit_job_database_error(self, mock_db_class, client):
         """Submit job with database error should return 500."""
         from vecinita_scraper.core.errors import DatabaseError
@@ -219,7 +219,7 @@ class TestSubmitJob:
 class TestGetJobStatus:
     """Test job status retrieval endpoint."""
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_get_job_status_pending(self, mock_db_class, client, mock_db_for_api):
         """Get status of pending job."""
         mock_db_for_api.get_job_status.return_value = {
@@ -240,7 +240,7 @@ class TestGetJobStatus:
         assert data["status"] == JobStatus.PENDING
         assert data["progress_pct"] == 5
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_get_job_status_crawling(self, mock_db_class, client, mock_db_for_api):
         """Get status of crawling job shows correct progress."""
         mock_db_for_api.get_job_status.return_value = {
@@ -258,7 +258,7 @@ class TestGetJobStatus:
         assert data["status"] == JobStatus.CRAWLING
         assert data["progress_pct"] == 20
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_get_job_status_completed(self, mock_db_class, client, mock_db_for_api):
         """Get status of completed job shows 100% progress."""
         mock_db_for_api.get_job_status.return_value = {
@@ -276,7 +276,7 @@ class TestGetJobStatus:
         assert data["status"] == JobStatus.COMPLETED
         assert data["progress_pct"] == 100
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_get_job_status_failed(self, mock_db_class, client, mock_db_for_api):
         """Get status of failed job includes error message."""
         mock_db_for_api.get_job_status.return_value = {
@@ -295,7 +295,7 @@ class TestGetJobStatus:
         assert data["status"] == JobStatus.FAILED
         assert data["error_message"] == "Connection timeout"
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_get_job_status_not_found(self, mock_db_class, client):
         """Get status of nonexistent job returns 404."""
         mock_db = AsyncMock()
@@ -308,7 +308,7 @@ class TestGetJobStatus:
         data = response.json()
         assert "not found" in data["detail"]
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_get_job_status_database_error(self, mock_db_class, client):
         """Get status with database error returns 500."""
         from vecinita_scraper.core.errors import DatabaseError
@@ -325,7 +325,7 @@ class TestGetJobStatus:
 class TestCancelJob:
     """Test job cancellation endpoint."""
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_cancel_pending_job(self, mock_db_class, client, mock_db_for_api):
         """Cancel a pending job should succeed."""
         mock_db_for_api.get_job_status.return_value = {
@@ -345,7 +345,7 @@ class TestCancelJob:
             "job-123", JobStatus.CANCELLED.value
         )
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_cancel_completed_job_fails(self, mock_db_class, client, mock_db_for_api):
         """Cannot cancel already completed job."""
         mock_db_for_api.get_job_status.return_value = {
@@ -360,7 +360,7 @@ class TestCancelJob:
         data = response.json()
         assert "Cannot cancel" in data["detail"]
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_cancel_failed_job_fails(self, mock_db_class, client, mock_db_for_api):
         """Cannot cancel already failed job."""
         mock_db_for_api.get_job_status.return_value = {
@@ -373,7 +373,7 @@ class TestCancelJob:
 
         assert response.status_code == 409
 
-    @patch("vecinita_scraper.api.routes.PostgresDB")
+    @patch("vecinita_scraper.services.job_control.PostgresDB")
     def test_cancel_nonexistent_job(self, mock_db_class, client):
         """Cannot cancel nonexistent job."""
         mock_db = AsyncMock()
