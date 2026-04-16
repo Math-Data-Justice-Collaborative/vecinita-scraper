@@ -41,9 +41,9 @@ def test_api_app_image_mounts_local_package() -> None:
     """API app must call add_local_python_source so the package is
     importable inside the Modal container.
 
-    The top-level import 'from vecinita_scraper.api.server import app' in
-    api/app.py executes immediately when Modal loads the script in the
-    container, so the package must be present in the image.
+    Imports from ``vecinita_scraper.api.server`` (e.g. ``create_app``) run when
+    Modal loads the script in the container, so the package must be present in
+    the image.
     """
     content = _API_APP.read_text()
     assert _REQUIRED_CALL in content, (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vecinita_scraper.api.server import app as fastapi_app
+from vecinita_scraper.api.server import create_app
 from vecinita_scraper.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +37,7 @@ image = (
 @modal.asgi_app()
 def fastapi() -> object:
     """ASGI entrypoint for Modal to serve the FastAPI scraper API."""
-    return fastapi_app
+    return create_app()
 
 
 if __name__ == "__main__":

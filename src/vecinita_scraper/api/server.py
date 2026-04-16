@@ -1,4 +1,4 @@
-"""FastAPI application with Modal ASGI integration."""
+"""FastAPI application factory with Modal ASGI integration."""
 
 from __future__ import annotations
 
@@ -136,6 +136,3 @@ def create_app() -> FastAPI:
         )
 
     return app
-
-
-app = create_app()
