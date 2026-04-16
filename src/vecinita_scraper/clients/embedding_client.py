@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import monotonic
 from typing import Any, cast
 
-from vecinita_scraper.core.config import get_config
+from vecinita_scraper.core.config import APIConfig
 from vecinita_scraper.core.errors import EmbeddingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import EmbeddingModelConfig
@@ -17,20 +17,25 @@ def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _api_config() -> APIConfig:
+    """Load only embedding-related API settings without full service validation."""
+    return APIConfig.from_env()
+
+
 class EmbeddingClient:
     """Async client for fetching model metadata and embedding text batches."""
 
     def __init__(self, base_url: str | None = None, api_token: str | None = None) -> None:
-        config = get_config()
+        config = _api_config()
         if base_url is None:
-            resolved_base_url = base_url or config.api.vecinita_embedding_api_url
+            resolved_base_url = config.vecinita_embedding_api_url
         else:
             resolved_base_url = base_url
 
-        if not resolved_base_url and not _truthy(str(config.api.modal_function_invocation)):
+        if not resolved_base_url and not _truthy(str(config.modal_function_invocation)):
             raise EmbeddingError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
 
-        self._base_url = resolved_base_url.rstrip("/")
+        self._base_url = resolved_base_url.rstrip("/") if resolved_base_url else ""
         _ = api_token  # Auth tokens are intentionally not forwarded from scraper clients.
         self._cached_model_config: EmbeddingModelConfig | None = None
         self._cache_time = 0.0
@@ -117,7 +122,7 @@ class EmbeddingClient:
         self, method: str, path: str, json: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Send an HTTP request to the embedding service."""
-        if get_config().api.modal_function_invocation:
+        if _api_config().modal_function_invocation:
             return await self._modal_request(method, path, json)
 
         try:
@@ -149,7 +154,7 @@ class EmbeddingClient:
         except Exception as exc:
             raise EmbeddingError("Modal invocation requested but modal SDK is unavailable") from exc
 
-        cfg = get_config().api
+        cfg = _api_config()
         app_name = cfg.modal_embedding_app_name
         env_name = (cfg.modal_environment_name or "").strip() or None
 
