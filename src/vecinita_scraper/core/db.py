@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, TypeVar
@@ -95,6 +96,22 @@ def _vector_literal(values: Sequence[float]) -> str:
     return "[" + ",".join(str(float(value)) for value in values) + "]"
 
 
+def _is_transient_psycopg2_error(exc: BaseException) -> bool:
+    """True for errors that often succeed on retry (SSL blips, server closing idle sockets)."""
+    msg = str(exc).lower()
+    return any(
+        s in msg
+        for s in (
+            "ssl",
+            "connection",
+            "closed",
+            "timeout",
+            "server closed",
+            "could not connect",
+        )
+    )
+
+
 class PostgresDB:
     """Direct Postgres client wrapper for scraper pipeline state."""
 
@@ -118,11 +135,22 @@ class PostgresDB:
     def _connect(self) -> Any:
         assert psycopg2 is not None
         assert RealDictCursor is not None
-        return psycopg2.connect(
-            self.database_url,
-            connect_timeout=self.connect_timeout,
-            cursor_factory=RealDictCursor,
-        )
+        last_exc: BaseException | None = None
+        for attempt in range(3):
+            try:
+                return psycopg2.connect(
+                    self.database_url,
+                    connect_timeout=self.connect_timeout,
+                    cursor_factory=RealDictCursor,
+                )
+            except psycopg2.OperationalError as exc:
+                last_exc = exc
+                if attempt < 2 and _is_transient_psycopg2_error(exc):
+                    time.sleep(0.15 * (2**attempt))
+                    continue
+                raise
+        assert last_exc is not None
+        raise last_exc
 
     async def create_scraping_job(
         self,
