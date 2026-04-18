@@ -50,9 +50,19 @@ class PostgresConfig:
     def from_env() -> "PostgresConfig":
         """Load Postgres config from environment.
 
-        ``DATABASE_URL`` is canonical (Render ``fromDatabase`` / shared env groups).
-        ``DB_URL`` is accepted as a fallback when operators use a different secret name.
+        ``DATABASE_URL`` is canonical on **Render** (``fromDatabase`` / shared env groups;
+        internal ``dpg-…-a`` hostnames are fine there — see Render Postgres docs).
+
+        ``MODAL_DATABASE_URL`` is optional and, when set, **overrides** ``DATABASE_URL`` /
+        ``DB_URL``. Modal scraper functions run outside Render's private network, so they
+        must use a hostname reachable from the public internet (Render **external** database
+        URL from the dashboard *Connect* menu, or PgBouncer with a public listener). If Modal
+        secrets only copy the Render web service's internal ``DATABASE_URL``, connections
+        fail with ``could not translate host name … to address``.
         """
+        modal = _env("MODAL_DATABASE_URL").strip()
+        if modal:
+            return PostgresConfig(database_url=modal)
         primary = _env("DATABASE_URL").strip()
         fallback = _env("DB_URL").strip()
         return PostgresConfig(database_url=primary or fallback)
@@ -61,7 +71,8 @@ class PostgresConfig:
         """Validate Postgres configuration."""
         if not self.database_url:
             raise ConfigError(
-                "Missing required Postgres configuration: DATABASE_URL (or DB_URL as fallback)"
+                "Missing required Postgres configuration: MODAL_DATABASE_URL, DATABASE_URL, "
+                "or DB_URL (see PostgresConfig.from_env docstring for Modal vs Render)"
             )
 
 
