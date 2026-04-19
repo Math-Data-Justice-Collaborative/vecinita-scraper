@@ -48,6 +48,16 @@ modal secret create vecinita-scraper-env --from-dotenv path/to/full-scraper-secr
 
 This service also ships with a Dockerfile and `render.yaml` for a Render Docker web-service deploy.
 
+#### Docker / Render (monorepo parity)
+
+Production **`vecinita-data-management-api-v1`** builds from the **repo root** blueprint with
+`dockerfilePath: ./services/scraper/Dockerfile` and `dockerContext: ./services/scraper` (same paths as
+Render). For baseline timings, cold vs warm-cache behavior, and smoke-run examples, use
+[`specs/002-dm-api-docker-build/quickstart.md`](../../specs/002-dm-api-docker-build/quickstart.md).
+Expect **repeat-edit** rebuilds (source-only changes) to be much faster than a full dependency
+install once the stub dependency layer is warm; **cold** `--no-cache` builds still pull the full
+stack and need plenty of free disk on the Docker data root.
+
 The root monorepo [`render.yaml`](../../render.yaml) injects `DATABASE_URL` for `vecinita-data-management-api-v1` from the single shared `vecinita-postgres` resource via `fromDatabase` (internal `dpg-…-a` hostname is correct **on Render**). This directory’s [`render.yaml`](render.yaml) is for optional **standalone** Render deploys only: it does **not** provision a second database—set `DATABASE_URL` in the dashboard to your Postgres internal URL (or deploy from the repo root blueprint). If you run the same FastAPI image on **Modal**, add **`SCRAPER_API_KEYS`**, upstream URLs, and CORS settings to the Modal secret group **`vecinita-scraper-env`** (see `vecinita_scraper.api.app`). **Modal workers must set `MODAL_DATABASE_URL`** to the same database using Render’s [**external** Postgres URL](https://render.com/docs/postgresql-creating-connecting#external-connections) (public hostname + `sslmode=require`); internal hostnames from the blueprint **do not resolve** outside Render (`could not translate host name …`). `DATABASE_URL` in that secret may duplicate the external DSN or stay unset if `MODAL_DATABASE_URL` is set. GitHub Actions only supplies Modal CLI auth; it does not create or sync secrets for you. A stale or suspended DB still causes errors like `SSL connection has been closed unexpectedly`.
 
 Required environment variables for the Docker / Render deployment:
