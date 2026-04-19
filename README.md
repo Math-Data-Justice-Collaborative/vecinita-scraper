@@ -2,6 +2,16 @@
 
 Serverless scraping pipeline for Vecinita.
 
+## Canonical scraper implementation
+
+This directory ([`services/scraper/`](./)) is the **single** source of truth for scraper behavior
+(crawl, job control, workers, and persistence). Other services (including **data-management-api**)
+must integrate via **HTTP** only: configure `SCRAPER_SERVICE_BASE_URL` to the deployed scraper
+origin and use `packages/service-clients` [`ScraperClient`](../data-management-api/packages/service-clients/service_clients/scraper_client.py)
+instead of importing or copying orchestration from the legacy DM submodule checkout.
+
+Remote integration contract: [`specs/003-consolidate-scraper-dm/contracts/dm-api-remote-service-integration.md`](../../specs/003-consolidate-scraper-dm/contracts/dm-api-remote-service-integration.md).
+
 ## Current architecture
 
 - FastAPI control plane served directly from Modal
