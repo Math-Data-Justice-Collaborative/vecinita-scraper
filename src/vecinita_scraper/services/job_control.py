@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Any
 
@@ -25,6 +26,16 @@ from vecinita_scraper.core.models import (
 )
 
 logger = get_logger(__name__)
+
+
+def _persist_via_gateway() -> bool:
+    """When true, Modal must not open Postgres for **submit** (gateway owns the row)."""
+    return str(os.getenv("MODAL_SCRAPER_PERSIST_VIA_GATEWAY", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class JobNotFoundError(Exception):
@@ -68,18 +79,23 @@ async def submit_scrape_job(
     *,
     jobs_queue: Any,
 ) -> ScrapeJobCreatedResponse:
-    """Create DB row and enqueue scrape work."""
-    db = PostgresDB()
+    """Create DB row and enqueue scrape work (or enqueue only when gateway owns the row)."""
     crawl_config = request.crawl_config or CrawlConfig()
     chunking_config = request.chunking_config or ChunkingConfig()
 
-    job_id = await db.create_scraping_job(
-        url=str(request.url),
-        user_id=request.user_id,
-        crawl_config=crawl_config.model_dump(),
-        chunking_config=chunking_config.model_dump(),
-        metadata=request.metadata,
-    )
+    if _persist_via_gateway():
+        if not (request.job_id and str(request.job_id).strip()):
+            raise ValueError("job_id is required when MODAL_SCRAPER_PERSIST_VIA_GATEWAY is enabled")
+        job_id = str(request.job_id).strip()
+    else:
+        db = PostgresDB()
+        job_id = await db.create_scraping_job(
+            url=str(request.url),
+            user_id=request.user_id,
+            crawl_config=crawl_config.model_dump(),
+            chunking_config=chunking_config.model_dump(),
+            metadata=request.metadata,
+        )
 
     logger.info(
         "Job submitted",
@@ -182,12 +198,21 @@ def modal_job_submit(payload: dict[str, Any], *, jobs_queue: Any) -> dict[str, A
     except ValidationError as exc:
         return _rpc_err(code="validation_error", detail=str(exc), http_status=422)
 
+    if _persist_via_gateway() and not (request.job_id and str(request.job_id).strip()):
+        return _rpc_err(
+            code="validation_error",
+            detail="job_id is required when MODAL_SCRAPER_PERSIST_VIA_GATEWAY is enabled",
+            http_status=422,
+        )
+
     async def _run() -> ScrapeJobCreatedResponse:
         return await submit_scrape_job(request, jobs_queue=jobs_queue)
 
     try:
         out = asyncio.run(_run())
         return _rpc_ok(out.model_dump(mode="json"))
+    except ValueError as exc:
+        return _rpc_err(code="validation_error", detail=str(exc), http_status=422)
     except DatabaseError as exc:
         logger.exception("Database error during job submission", error=str(exc))
         return _rpc_err(code="database_error", detail=str(exc), http_status=500)

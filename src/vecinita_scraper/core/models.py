@@ -156,6 +156,13 @@ class ScrapeJobRequest(BaseModel):
         default=None,
         description="Arbitrary JSON metadata stored with the job.",
     )
+    job_id: str | None = Field(
+        default=None,
+        description=(
+            "When set, the caller already inserted the ``scraping_jobs`` row (Render gateway). "
+            "Used with ``MODAL_SCRAPER_PERSIST_VIA_GATEWAY`` so Modal only enqueues work."
+        ),
+    )
 
     @field_validator("url")
     @classmethod
