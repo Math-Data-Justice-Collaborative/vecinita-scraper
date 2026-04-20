@@ -4,8 +4,9 @@
 -- DATABASE_URL points at Render-managed Postgres. Do NOT use 001_create_scraping_jobs.sql
 -- as-is on Render: it enables RLS policies that reference auth.uid() (Supabase-only).
 --
--- Apply from a trusted shell (Render dashboard Shell on the gateway service, or locally
--- with the same DATABASE_URL Render injects — must include SSL, e.g. sslmode=require):
+-- Apply from a trusted shell. From outside Render, use the Postgres **External** connection
+-- string (host …REGION-postgres.render.com); internal hostnames dpg-… alone do not resolve.
+-- From Render Shell on a service, the Internal URL works. Use SSL (e.g. sslmode=require):
 --
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/scraper/migrations/render_gateway_scraper_schema.sql
 --
