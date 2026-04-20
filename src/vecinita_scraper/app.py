@@ -1,8 +1,14 @@
 """Modal App initialization with queues and shared infrastructure.
 
-Job-queue pattern (Modal): queues hold payloads; drain functions resolve workers with
-``modal.Function.from_name`` (hydrated handles in any container) then submit batches with
-``spawn_map`` (async background execution; results in Postgres / downstream queues).
+Scrape jobs use Modal's primary job-queue pattern: ``modal.Function.from_name`` + ``.spawn()`` /
+``.spawn.aio()`` on ``scraper_worker`` (see ``job_control._dispatch_scrape_job_to_modal_worker``),
+returning a ``FunctionCall`` id for ``FunctionCall.get()`` polling via
+``GET /jobs/spawns/{call_id}``.
+If spawn is unavailable, work falls back to the ``scrape-jobs`` Modal ``Queue`` and
+``drain_scrape_queue``.
+
+Downstream stages still use Modal ``Queue`` plus drain functions that resolve workers with
+``from_name`` and ``spawn_map.aio`` (batch background execution; results in Postgres / next queues).
 See https://modal.com/docs/guide/job-queue and
 https://modal.com/docs/guide/batch-processing#background-execution-with-spawn_map
 """

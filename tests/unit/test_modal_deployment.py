@@ -37,6 +37,15 @@ def test_trigger_reindex_uses_modal_function_from_name() -> None:
 
 
 @pytest.mark.unit
+def test_job_control_uses_modal_spawn_on_scraper_worker() -> None:
+    """Submit path should prefer ``spawn.aio`` on ``scraper_worker`` (Modal job-queue pattern)."""
+    text = (_SRC_ROOT / "vecinita_scraper" / "services" / "job_control.py").read_text()
+    assert "scraper_worker" in text
+    assert "spawn.aio" in text
+    assert "_dispatch_scrape_job_to_modal_worker" in text
+
+
+@pytest.mark.unit
 def test_worker_drains_submit_batch_via_spawn_map() -> None:
     """Drains batch-submit worker jobs via shared ``spawn_map`` helper (Modal batch pattern)."""
     app_text = _WORKERS_APP.read_text()

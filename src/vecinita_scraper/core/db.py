@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -11,8 +12,12 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 from vecinita_scraper.core.config import get_config
-from vecinita_scraper.core.errors import DatabaseError
+from vecinita_scraper.core.errors import ConfigError, DatabaseError
 from vecinita_scraper.core.logger import get_logger
+from vecinita_scraper.core.postgres_json_sanitize import (
+    sanitize_postgres_json_payload,
+    sanitize_postgres_text,
+)
 
 logger = get_logger(__name__)
 
@@ -92,6 +97,15 @@ def _parse_json_text(value: str | None) -> Any:
         return value
 
 
+def _json_value_for_postgres(raw: Any) -> Any:
+    """Prepare a value for ``psycopg2.extras.Json`` so Postgres json/jsonb accepts it."""
+    if isinstance(raw, (dict, list)):
+        return sanitize_postgres_json_payload(raw)
+    if isinstance(raw, str):
+        return sanitize_postgres_text(raw)
+    return raw
+
+
 def _vector_literal(values: Sequence[float]) -> str:
     return "[" + ",".join(str(float(value)) for value in values) + "]"
 
@@ -166,6 +180,11 @@ class PostgresDB:
 
         def operation() -> None:
             assert Json is not None
+            safe_url = sanitize_postgres_text(url)
+            safe_user_id = sanitize_postgres_text(user_id)
+            safe_crawl = sanitize_postgres_json_payload(crawl_config)
+            safe_chunk = sanitize_postgres_json_payload(chunking_config)
+            safe_meta = sanitize_postgres_json_payload(metadata or {})
             with self._connect() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -184,12 +203,12 @@ class PostgresDB:
                         """,
                         (
                             job_id,
-                            url,
-                            user_id,
+                            safe_url,
+                            safe_user_id,
                             "pending",
-                            Json(crawl_config),
-                            Json(chunking_config),
-                            Json(metadata or {}),
+                            Json(safe_crawl),
+                            Json(safe_chunk),
+                            Json(safe_meta),
                             now,
                             now,
                         ),
@@ -394,7 +413,7 @@ class PostgresDB:
                             markdown_content,
                             tables_json,
                             (
-                                Json(_parse_json_text(metadata_json))
+                                Json(_json_value_for_postgres(_parse_json_text(metadata_json)))
                                 if metadata_json is not None
                                 else None
                             ),
@@ -526,17 +545,69 @@ class PostgresDB:
 
 
 _db_instance: PostgresDB | None = None
+_gateway_http_instance: Any = None
 
 
-def get_db() -> PostgresDB:
-    """Get or create database instance."""
-    global _db_instance
+def _use_gateway_http_pipeline() -> bool:
+    """When set, workers persist via Render gateway HTTP instead of psycopg2 on Modal."""
+    return bool(
+        str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip()
+        and str(os.getenv("SCRAPER_PIPELINE_INGEST_TOKEN", "")).strip()
+    )
+
+
+def _modal_function_running_in_cloud() -> bool:
+    """True inside a Modal remote container (not laptop import / ``modal run`` host process)."""
+    try:
+        import modal  # noqa: PLC0415
+
+        return not modal.is_local()
+    except Exception:
+        remote = str(os.getenv("MODAL_IS_REMOTE", "")).strip().lower()
+        if remote in {"1", "true", "yes", "on"}:
+            return True
+        return bool(str(os.getenv("MODAL_TASK_ID", "")).strip())
+
+
+def _allow_direct_postgres_from_modal_cloud() -> bool:
+    """Escape hatch for debugging only; production Modal workers should use the gateway."""
+    return str(os.getenv("SCRAPER_ALLOW_DIRECT_POSTGRES_ON_MODAL", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def get_db() -> PostgresDB | Any:
+    """Return Postgres client or gateway HTTP persistence (same async surface for workers)."""
+    global _db_instance, _gateway_http_instance
+    if _use_gateway_http_pipeline():
+        if _gateway_http_instance is None:
+            from vecinita_scraper.persistence.gateway_http import GatewayHttpPipelinePersistence
+
+            _gateway_http_instance = GatewayHttpPipelinePersistence(
+                base_url=str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip(),
+                token=str(os.getenv("SCRAPER_PIPELINE_INGEST_TOKEN", "")).strip(),
+            )
+        return _gateway_http_instance
+    if _modal_function_running_in_cloud() and not _allow_direct_postgres_from_modal_cloud():
+        raise ConfigError(
+            "Modal scraper workers must persist through the Render gateway (HTTP), not a direct "
+            "Postgres connection from Modal. Set SCRAPER_GATEWAY_BASE_URL to the gateway public "
+            "base URL and SCRAPER_PIPELINE_INGEST_TOKEN to match the gateway's "
+            "SCRAPER_PIPELINE_INGEST_TOKEN. You can omit MODAL_DATABASE_URL / DATABASE_URL on "
+            "Modal for pipeline-only workers when this pair is set. See "
+            "docs/deployment/RENDER_SHARED_ENV_CONTRACT.md. "
+            "For exceptional debugging only, set SCRAPER_ALLOW_DIRECT_POSTGRES_ON_MODAL=1."
+        )
     if _db_instance is None:
         _db_instance = PostgresDB()
     return _db_instance
 
 
-def set_db(db: PostgresDB) -> None:
+def set_db(db: PostgresDB | Any | None) -> None:
     """Set database instance (for testing)."""
-    global _db_instance
+    global _db_instance, _gateway_http_instance
     _db_instance = db
+    _gateway_http_instance = None

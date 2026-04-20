@@ -13,7 +13,7 @@ from vecinita_scraper.app import (
     store_jobs_queue,
 )
 from vecinita_scraper.clients.embedding_client import EmbeddingClient
-from vecinita_scraper.core.db import PostgresDB, get_db
+from vecinita_scraper.core.db import get_db
 from vecinita_scraper.core.errors import EmbeddingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import EmbedJobQueueData, JobStatus, StoreJobQueueData
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 async def run_embedding_job(
     job_data: EmbedJobQueueData,
-    db: PostgresDB | None = None,
+    db: Any | None = None,
     store_queue: Any | None = None,
     embedding_client: EmbeddingClient | None = None,
 ) -> dict[str, Any]:

@@ -455,6 +455,14 @@ class ScrapeJobCreatedResponse(BaseModel):
         examples=["2024-02-09T10:00:00"],
     )
     url: str = Field(..., description="Seed URL for the crawl.", examples=["https://example.org/"])
+    modal_function_call_id: str | None = Field(
+        default=None,
+        description=(
+            "When present, the scrape worker was started with Modal ``Function.spawn``; "
+            "poll ``GET /jobs/spawns/{modal_function_call_id}`` (``FunctionCall.get(timeout=0)``) "
+            "per Modal job-queue docs."
+        ),
+    )
 
 
 class ScrapeJobListItem(BaseModel):

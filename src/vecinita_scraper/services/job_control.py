@@ -38,6 +38,72 @@ def _persist_via_gateway() -> bool:
     }
 
 
+def _caller_supplied_job_id(request: ScrapeJobRequest) -> bool:
+    return bool(request.job_id and str(request.job_id).strip())
+
+
+def _postgres_dsn_configured() -> bool:
+    """True when DATABASE_URL / MODAL_DATABASE_URL / DB_URL resolves to a non-empty DSN."""
+    from vecinita_scraper.core.config import PostgresConfig
+
+    try:
+        return bool(PostgresConfig.from_env().database_url.strip())
+    except Exception:
+        return False
+
+
+def _modal_force_queue_dispatch() -> bool:
+    """When true, skip ``scraper_worker`` spawn and only use the Modal ``scrape-jobs`` queue."""
+    return str(os.getenv("MODAL_SCRAPER_FORCE_QUEUE_DISPATCH", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+async def _dispatch_scrape_job_to_modal_worker(
+    payload_dict: dict[str, Any], *, jobs_queue: Any
+) -> tuple[str | None, bool]:
+    """Prefer Modal job-queue ``spawn`` on ``scraper_worker``; fall back to ``jobs_queue``.
+
+    Returns ``(modal_function_call_id | None, used_queue_fallback)``.
+    """
+    if _modal_force_queue_dispatch():
+        await jobs_queue.put.aio(payload_dict)
+        return None, True
+    try:
+        from vecinita_scraper.app import lookup_scraper_deployed_function
+
+        fn = lookup_scraper_deployed_function("scraper_worker")
+        call = await fn.spawn.aio(payload_dict)
+        return str(call.object_id), False
+    except Exception as exc:
+        logger.warning(
+            "scraper_worker spawn unavailable; using scrape-jobs queue",
+            error=str(exc),
+        )
+        await jobs_queue.put.aio(payload_dict)
+        return None, True
+
+
+def _pipeline_http_ingest_configured() -> bool:
+    """True when base URL and ingest token env vars are set (gateway HTTP pipeline)."""
+    return bool(
+        str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip()
+        and str(os.getenv("SCRAPER_PIPELINE_INGEST_TOKEN", "")).strip()
+    )
+
+
+def _modal_control_plane_requires_postgres_but_missing() -> bool:
+    """Modal has pipeline HTTP ingest but no Postgres — get/list/cancel RPCs cannot query DB."""
+    return _pipeline_http_ingest_configured() and not _postgres_dsn_configured()
+
+
+class ControlPlaneUnavailableError(Exception):
+    """Raised when Modal scraper has no Postgres DSN; use the Render gateway for job status APIs."""
+
+
 class JobNotFoundError(Exception):
     """Raised when a job_id does not exist in the database."""
 
@@ -83,10 +149,11 @@ async def submit_scrape_job(
     crawl_config = request.crawl_config or CrawlConfig()
     chunking_config = request.chunking_config or ChunkingConfig()
 
-    if _persist_via_gateway():
-        if not (request.job_id and str(request.job_id).strip()):
-            raise ValueError("job_id is required when MODAL_SCRAPER_PERSIST_VIA_GATEWAY is enabled")
+    if _caller_supplied_job_id(request):
+        # Caller (e.g. Render gateway) already inserted ``scraping_jobs`` — enqueue only.
         job_id = str(request.job_id).strip()
+    elif _persist_via_gateway():
+        raise ValueError("job_id is required when MODAL_SCRAPER_PERSIST_VIA_GATEWAY is enabled")
     else:
         db = PostgresDB()
         job_id = await db.create_scraping_job(
@@ -110,18 +177,27 @@ async def submit_scrape_job(
         user_id=request.user_id,
         crawl_config=crawl_config,
     )
-    await jobs_queue.put.aio(scrape_payload.model_dump())
+    payload_dict = scrape_payload.model_dump()
+    modal_call_id, _used_queue = await _dispatch_scrape_job_to_modal_worker(
+        payload_dict, jobs_queue=jobs_queue
+    )
 
     return ScrapeJobCreatedResponse(
         job_id=job_id,
         status=JobStatus.PENDING,
         created_at=datetime.utcnow().isoformat(),
         url=str(request.url),
+        modal_function_call_id=modal_call_id,
     )
 
 
 async def get_scrape_job_status(job_id: str) -> JobStatusResponse:
     """Return job status or raise JobNotFoundError."""
+    if _modal_control_plane_requires_postgres_but_missing():
+        raise ControlPlaneUnavailableError(
+            "Job status is served by the Render gateway when using gateway HTTP "
+            "pipeline persistence without a Postgres DSN on Modal."
+        )
     db = PostgresDB()
     job_data = await db.get_job_status(job_id)
     if not job_data:
@@ -146,6 +222,11 @@ async def get_scrape_job_status(job_id: str) -> JobStatusResponse:
 
 async def list_scrape_jobs(params: ScrapeJobListQueryParams) -> ScrapeJobListResponse:
     """List recent jobs from Postgres."""
+    if _modal_control_plane_requires_postgres_but_missing():
+        raise ControlPlaneUnavailableError(
+            "Job list is served by the Render gateway when using gateway HTTP pipeline persistence "
+            "without a Postgres DSN on Modal."
+        )
     db = PostgresDB()
     result = await db.list_jobs(user_id=params.user_id, limit=params.limit)
     jobs = [ScrapeJobListItem.model_validate(row) for row in result["jobs"]]
@@ -159,6 +240,11 @@ async def list_scrape_jobs(params: ScrapeJobListQueryParams) -> ScrapeJobListRes
 
 async def cancel_scrape_job(job_id: str) -> ScrapeJobCancelResponse:
     """Cancel a job or raise JobNotFoundError / JobConflictError."""
+    if _modal_control_plane_requires_postgres_but_missing():
+        raise ControlPlaneUnavailableError(
+            "Job cancel is served by the Render gateway when using gateway HTTP "
+            "pipeline persistence without a Postgres DSN on Modal."
+        )
     db = PostgresDB()
     job_data = await db.get_job_status(job_id)
     if not job_data:
@@ -198,7 +284,7 @@ def modal_job_submit(payload: dict[str, Any], *, jobs_queue: Any) -> dict[str, A
     except ValidationError as exc:
         return _rpc_err(code="validation_error", detail=str(exc), http_status=422)
 
-    if _persist_via_gateway() and not (request.job_id and str(request.job_id).strip()):
+    if _persist_via_gateway() and not _caller_supplied_job_id(request):
         return _rpc_err(
             code="validation_error",
             detail="job_id is required when MODAL_SCRAPER_PERSIST_VIA_GATEWAY is enabled",
@@ -230,6 +316,8 @@ def modal_job_get(job_id: str) -> dict[str, Any]:
     try:
         out = asyncio.run(_run())
         return _rpc_ok(out.model_dump(mode="json"))
+    except ControlPlaneUnavailableError as exc:
+        return _rpc_err(code="service_unavailable", detail=str(exc), http_status=503)
     except JobNotFoundError:
         return _rpc_err(code="not_found", detail=f"Job {job_id} not found", http_status=404)
     except DatabaseError as exc:
@@ -251,6 +339,8 @@ def modal_job_list(user_id: str | None, limit: int) -> dict[str, Any]:
     try:
         out = asyncio.run(_run())
         return _rpc_ok(out.model_dump(mode="json"))
+    except ControlPlaneUnavailableError as exc:
+        return _rpc_err(code="service_unavailable", detail=str(exc), http_status=503)
     except DatabaseError as exc:
         logger.exception("Database error listing jobs", error=str(exc))
         return _rpc_err(code="database_error", detail=str(exc), http_status=500)
@@ -268,6 +358,8 @@ def modal_job_cancel(job_id: str) -> dict[str, Any]:
     try:
         out = asyncio.run(_run())
         return _rpc_ok(out.model_dump(mode="json"))
+    except ControlPlaneUnavailableError as exc:
+        return _rpc_err(code="service_unavailable", detail=str(exc), http_status=503)
     except JobNotFoundError:
         return _rpc_err(code="not_found", detail=f"Job {job_id} not found", http_status=404)
     except JobConflictError as exc:

@@ -11,7 +11,7 @@ from vecinita_scraper.app import (
     process_jobs_queue,
     spawn_deployed_worker_map,
 )
-from vecinita_scraper.core.db import PostgresDB, get_db
+from vecinita_scraper.core.db import get_db
 from vecinita_scraper.core.errors import ProcessingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import ChunkJobQueueData, JobStatus, ProcessJobQueueData
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 async def run_processing_job(
     job_data: ProcessJobQueueData,
-    db: PostgresDB | None = None,
+    db: Any | None = None,
     chunk_queue: Any | None = None,
 ) -> dict[str, Any]:
     """Process extracted content and enqueue it for chunking."""

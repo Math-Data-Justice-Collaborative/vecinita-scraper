@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,8 +118,11 @@ class TestSubmitJob:
 
     @patch("vecinita_scraper.services.job_control.PostgresDB")
     @patch("vecinita_scraper.api.routes.scrape_jobs_queue")
-    def test_submit_job_minimal(self, mock_queue, mock_db_class, client, mock_db_for_api):
+    def test_submit_job_minimal(
+        self, mock_queue, mock_db_class, client, mock_db_for_api, monkeypatch
+    ):
         """Submit job with minimal config should succeed."""
+        monkeypatch.setenv("MODAL_SCRAPER_FORCE_QUEUE_DISPATCH", "1")
         mock_db_class.return_value = mock_db_for_api
         mock_queue.put = AsyncMock()
         mock_queue.put.aio = AsyncMock()
@@ -141,8 +144,11 @@ class TestSubmitJob:
 
     @patch("vecinita_scraper.services.job_control.PostgresDB")
     @patch("vecinita_scraper.api.routes.scrape_jobs_queue")
-    def test_submit_job_with_configs(self, mock_queue, mock_db_class, client, mock_db_for_api):
+    def test_submit_job_with_configs(
+        self, mock_queue, mock_db_class, client, mock_db_for_api, monkeypatch
+    ):
         """Submit job with custom crawl and chunking configs."""
+        monkeypatch.setenv("MODAL_SCRAPER_FORCE_QUEUE_DISPATCH", "1")
         mock_db_class.return_value = mock_db_for_api
         mock_queue.put = AsyncMock()
         mock_queue.put.aio = AsyncMock()
@@ -217,6 +223,55 @@ class TestSubmitJob:
         assert response.status_code == 500
         data = response.json()
         assert "Database error" in data["detail"]
+
+
+class TestPollSpawnResult:
+    """``GET /jobs/spawns/{call_id}`` mirrors Modal ``FunctionCall.get(timeout=0)``."""
+
+    def test_poll_spawn_pending_returns_202(self, client, monkeypatch):
+        import modal
+
+        fc = MagicMock()
+
+        async def _pending(*, timeout: float = 0, **_kwargs: object) -> None:
+            raise TimeoutError()
+
+        fc.get.aio = _pending
+        monkeypatch.setattr(modal.FunctionCall, "from_id", lambda _cid: fc)
+
+        response = client.get("/jobs/spawns/fc-test123")
+        assert response.status_code == 202
+        assert response.content == b""
+
+    def test_poll_spawn_completed_returns_json(self, client, monkeypatch):
+        import modal
+
+        fc = MagicMock()
+
+        async def _done(*, timeout: float = 0, **_kwargs: object) -> dict[str, object]:
+            return {"job_id": "j1", "pages_crawled": 1}
+
+        fc.get.aio = _done
+        monkeypatch.setattr(modal.FunctionCall, "from_id", lambda _cid: fc)
+
+        response = client.get("/jobs/spawns/fc-test456")
+        assert response.status_code == 200
+        assert response.json() == {"job_id": "j1", "pages_crawled": 1}
+
+    def test_poll_spawn_expired_returns_404(self, client, monkeypatch):
+        import modal
+        from modal.exception import OutputExpiredError
+
+        fc = MagicMock()
+
+        async def _expired(*, timeout: float = 0, **_kwargs: object) -> None:
+            raise OutputExpiredError()
+
+        fc.get.aio = _expired
+        monkeypatch.setattr(modal.FunctionCall, "from_id", lambda _cid: fc)
+
+        response = client.get("/jobs/spawns/fc-expired")
+        assert response.status_code == 404
 
 
 class TestGetJobStatus:
