@@ -1,5 +1,9 @@
 -- Migration: Create scraping_jobs table
 -- This is the main table for tracking job lifecycle
+--
+-- Render Postgres (gateway MODAL_SCRAPER_PERSIST_VIA_GATEWAY): use
+-- render_gateway_scraper_schema.sql instead — this file's RLS policies use auth.uid()
+-- (Supabase) and will not apply on plain Postgres.
 
 CREATE TABLE IF NOT EXISTS scraping_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
