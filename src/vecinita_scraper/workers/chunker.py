@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from vecinita_scraper.app import APP_SECRETS, app, chunk_jobs_queue, embed_jobs_queue
+from vecinita_scraper.app import (
+    APP_SECRETS,
+    app,
+    chunk_jobs_queue,
+    embed_jobs_queue,
+    spawn_deployed_worker_map,
+)
 from vecinita_scraper.chunkers.semantic_chunker import SemanticChunker
 from vecinita_scraper.core.config import get_config
 from vecinita_scraper.core.db import PostgresDB, get_db
@@ -94,14 +100,15 @@ async def chunker_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
 @app.function(timeout=120, max_containers=2, secrets=APP_SECRETS)
 async def drain_chunk_queue(batch_size: int = 10) -> dict[str, int]:
     """Pull pending chunking jobs from the queue and fan them out to workers."""
-    dispatched = 0
-
+    payloads: list[dict[str, Any]] = []
     for _ in range(batch_size):
         item = await chunk_jobs_queue.get.aio(block=False)
         if item is None:
             break
-        await chunker_worker.spawn.aio(item)
-        dispatched += 1
+        payloads.append(item)
+
+    await spawn_deployed_worker_map("chunker_worker", payloads)
+    dispatched = len(payloads)
 
     logger.info("Dispatched chunking jobs from queue", dispatched=dispatched)
     return {"dispatched": dispatched}

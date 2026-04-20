@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from vecinita_scraper.app import APP_SECRETS, app, process_jobs_queue, scrape_jobs_queue
+from vecinita_scraper.app import (
+    APP_SECRETS,
+    app,
+    process_jobs_queue,
+    scrape_jobs_queue,
+    spawn_deployed_worker_map,
+)
 from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.errors import CrawlingError, ValidationError
 from vecinita_scraper.core.logger import get_logger
@@ -119,14 +125,15 @@ async def scraper_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
 @app.function(timeout=120, max_containers=2, secrets=APP_SECRETS)
 async def drain_scrape_queue(batch_size: int = 10) -> dict[str, int]:
     """Pull pending scrape jobs from the queue and fan them out to workers."""
-    dispatched = 0
-
+    payloads: list[dict[str, Any]] = []
     for _ in range(batch_size):
         item = await scrape_jobs_queue.get.aio(block=False)
         if item is None:
             break
-        await scraper_worker.spawn.aio(item)
-        dispatched += 1
+        payloads.append(item)
+
+    await spawn_deployed_worker_map("scraper_worker", payloads)
+    dispatched = len(payloads)
 
     logger.info("Dispatched scrape jobs from queue", dispatched=dispatched)
     return {"dispatched": dispatched}

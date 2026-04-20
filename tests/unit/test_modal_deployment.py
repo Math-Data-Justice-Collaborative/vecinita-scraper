@@ -17,6 +17,38 @@ _WORKERS_APP = _SRC_ROOT / "vecinita_scraper" / "app.py"
 _API_APP = _SRC_ROOT / "vecinita_scraper" / "api" / "app.py"
 
 _REQUIRED_CALL = 'add_local_python_source("vecinita_scraper")'
+_FROM_NAME = "Function.from_name"
+
+
+@pytest.mark.unit
+def test_trigger_reindex_uses_modal_function_from_name() -> None:
+    """``trigger_reindex`` must resolve drain workers via ``from_name``, not in-process imports.
+
+    Spawning handles obtained by importing sibling worker modules can be unhydrated inside
+    a Modal container and fail with ``ExecutionError: ... App it is defined on is not running``.
+    """
+    content = _WORKERS_APP.read_text()
+    assert _FROM_NAME in content
+    assert "def lookup_scraper_deployed_function" in content
+    assert "drain_scrape_queue" in content and "drain_store_queue" in content
+    assert "lookup_scraper_deployed_function(fn_tag)" in content
+    assert "def spawn_deployed_worker_map" in content
+    assert "spawn_map.aio" in content
+
+
+@pytest.mark.unit
+def test_worker_drains_submit_batch_via_spawn_map() -> None:
+    """Drains batch-submit worker jobs via shared ``spawn_map`` helper (Modal batch pattern)."""
+    app_text = _WORKERS_APP.read_text()
+    assert "spawn_deployed_worker_map" in app_text
+    assert "spawn_map.aio" in app_text
+
+    worker_dir = _SRC_ROOT / "vecinita_scraper" / "workers"
+    for name in ("scraper.py", "processor.py", "chunker.py", "embedder.py", "finalizer.py"):
+        text = (worker_dir / name).read_text()
+        msg = f"{name}: expected spawn_deployed_worker_map"
+        assert "spawn_deployed_worker_map" in text, msg
+        assert 'await spawn_deployed_worker_map("' in text
 
 
 @pytest.mark.unit

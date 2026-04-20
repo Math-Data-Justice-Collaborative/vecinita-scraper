@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from vecinita_scraper.app import APP_SECRETS, app, chunk_jobs_queue, process_jobs_queue
+from vecinita_scraper.app import (
+    APP_SECRETS,
+    app,
+    chunk_jobs_queue,
+    process_jobs_queue,
+    spawn_deployed_worker_map,
+)
 from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.errors import ProcessingError
 from vecinita_scraper.core.logger import get_logger
@@ -77,14 +83,15 @@ async def processor_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
 @app.function(timeout=120, max_containers=2, secrets=APP_SECRETS)
 async def drain_process_queue(batch_size: int = 10) -> dict[str, int]:
     """Pull pending processing jobs from the queue and fan them out to workers."""
-    dispatched = 0
-
+    payloads: list[dict[str, Any]] = []
     for _ in range(batch_size):
         item = await process_jobs_queue.get.aio(block=False)
         if item is None:
             break
-        await processor_worker.spawn.aio(item)
-        dispatched += 1
+        payloads.append(item)
+
+    await spawn_deployed_worker_map("processor_worker", payloads)
+    dispatched = len(payloads)
 
     logger.info("Dispatched processing jobs from queue", dispatched=dispatched)
     return {"dispatched": dispatched}

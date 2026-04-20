@@ -1,4 +1,11 @@
-"""Modal App initialization with queues and shared infrastructure."""
+"""Modal App initialization with queues and shared infrastructure.
+
+Job-queue pattern (Modal): queues hold payloads; drain functions resolve workers with
+``modal.Function.from_name`` (hydrated handles in any container) then submit batches with
+``spawn_map`` (async background execution; results in Postgres / downstream queues).
+See https://modal.com/docs/guide/job-queue and
+https://modal.com/docs/guide/batch-processing#background-execution-with-spawn_map
+"""
 
 from __future__ import annotations
 
@@ -174,6 +181,38 @@ def modal_scrape_job_cancel(job_id: str) -> dict[str, Any]:
     return modal_job_cancel(job_id)
 
 
+def lookup_scraper_deployed_function(fn_tag: str) -> Any:
+    """Return a hydrated Modal handle for a function deployed on this app (by tag).
+
+    Use for any ``.spawn`` / ``.spawn.aio`` / ``.spawn_map.aio`` from another Modal function
+    or from a different module import path. In-process ``worker_fn.spawn`` handles can be
+    unhydrated inside containers and raise
+    ``ExecutionError: ... App it is defined on is not running``.
+
+    Tags match the Python names on ``@app.function`` entrypoints (e.g. ``scraper_worker``,
+    ``drain_scrape_queue``). See https://modal.com/docs/guide/job-queue
+    """
+    import os
+
+    app_name = (os.getenv("MODAL_SCRAPER_APP_NAME") or app.name or "").strip()
+    if not app_name:
+        raise RuntimeError(
+            "Set MODAL_SCRAPER_APP_NAME or ensure modal.App has a name to spawn Modal functions."
+        )
+
+    env_name = (os.getenv("MODAL_ENVIRONMENT_NAME") or os.getenv("MODAL_ENV") or "").strip() or None
+    if env_name:
+        return modal.Function.from_name(app_name, fn_tag, environment_name=env_name)
+    return modal.Function.from_name(app_name, fn_tag)
+
+
+async def spawn_deployed_worker_map(fn_tag: str, payloads: list[Any]) -> None:
+    """Submit many worker jobs without waiting for results (Modal ``spawn_map`` batch pattern)."""
+    if not payloads:
+        return
+    await lookup_scraper_deployed_function(fn_tag).spawn_map.aio(payloads)
+
+
 @app.function(image=image, secrets=APP_SECRETS, timeout=60)
 def trigger_reindex(
     clean: bool = False, stream: bool = True, verbose: bool = False
@@ -188,28 +227,24 @@ def trigger_reindex(
     _ = stream
     _ = verbose
 
-    from vecinita_scraper.workers.chunker import drain_chunk_queue
-    from vecinita_scraper.workers.embedder import drain_embed_queue
-    from vecinita_scraper.workers.finalizer import drain_store_queue
-    from vecinita_scraper.workers.processor import drain_process_queue
-    from vecinita_scraper.workers.scraper import drain_scrape_queue
-
     batch_raw = os.getenv("MODAL_REINDEX_DRAIN_BATCH", "25").strip()
     try:
         batch_size = max(1, min(500, int(batch_raw)))
     except ValueError:
         batch_size = 25
 
+    # Modal function tags match the Python names on ``@app.function`` drain entrypoints.
     spawned: list[str] = []
-    for name, fn in (
-        ("drain_scrape_queue", drain_scrape_queue),
-        ("drain_process_queue", drain_process_queue),
-        ("drain_chunk_queue", drain_chunk_queue),
-        ("drain_embed_queue", drain_embed_queue),
-        ("drain_store_queue", drain_store_queue),
+    for fn_tag in (
+        "drain_scrape_queue",
+        "drain_process_queue",
+        "drain_chunk_queue",
+        "drain_embed_queue",
+        "drain_store_queue",
     ):
+        fn = lookup_scraper_deployed_function(fn_tag)
         fn.spawn(batch_size=batch_size)
-        spawned.append(name)
+        spawned.append(fn_tag)
 
     return {
         "status": "accepted",

@@ -18,6 +18,8 @@ def client(monkeypatch):
     """Create FastAPI test client."""
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("SCRAPER_DEBUG_BYPASS_AUTH", "true")
+    # Submit tests mock Postgres; unset gateway persist so CI env does not skip DB create.
+    monkeypatch.delenv("MODAL_SCRAPER_PERSIST_VIA_GATEWAY", raising=False)
     monkeypatch.delenv("SCRAPER_API_KEYS", raising=False)
     get_config.cache_clear()
     app = create_app()
@@ -29,6 +31,7 @@ def auth_client(monkeypatch):
     """Create FastAPI test client with auth enforcement enabled."""
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("SCRAPER_DEBUG_BYPASS_AUTH", "false")
+    monkeypatch.delenv("MODAL_SCRAPER_PERSIST_VIA_GATEWAY", raising=False)
     monkeypatch.setenv("SCRAPER_API_KEYS", "test-api-key")
     get_config.cache_clear()
     app = create_app()

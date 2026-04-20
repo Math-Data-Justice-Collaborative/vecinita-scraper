@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from vecinita_scraper.app import APP_SECRETS, app, store_jobs_queue
+from vecinita_scraper.app import (
+    APP_SECRETS,
+    app,
+    spawn_deployed_worker_map,
+    store_jobs_queue,
+)
 from vecinita_scraper.core.db import PostgresDB, get_db
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import JobStatus, StoreJobQueueData
@@ -43,14 +48,15 @@ async def finalizer_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
 @app.function(timeout=120, max_containers=2, secrets=APP_SECRETS)
 async def drain_store_queue(batch_size: int = 10) -> dict[str, int]:
     """Pull pending finalization jobs from the queue and fan them out to workers."""
-    dispatched = 0
-
+    payloads: list[dict[str, Any]] = []
     for _ in range(batch_size):
         item = await store_jobs_queue.get.aio(block=False)
         if item is None:
             break
-        await finalizer_worker.spawn.aio(item)
-        dispatched += 1
+        payloads.append(item)
+
+    await spawn_deployed_worker_map("finalizer_worker", payloads)
+    dispatched = len(payloads)
 
     logger.info("Dispatched finalization jobs from queue", dispatched=dispatched)
     return {"dispatched": dispatched}
