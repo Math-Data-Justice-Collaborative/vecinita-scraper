@@ -15,7 +15,7 @@ from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import ScraperHealthResponse
 
 logger = get_logger(__name__)
-_PUBLIC_PATHS = {"/health", "/openapi.json", "/docs", "/redoc"}
+_PUBLIC_PATHS = {"/", "/health", "/openapi.json", "/docs", "/redoc"}
 
 
 def _is_public_path(path: str) -> bool:
@@ -54,14 +54,6 @@ def create_app() -> FastAPI:
         title="Vecinita Scraper",
         description="Serverless web scraping pipeline with job queue management",
         version="0.1.0",
-    )
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=allowed_origins != ["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
     )
 
     @app.middleware("http")
@@ -106,6 +98,15 @@ def create_app() -> FastAPI:
         request.state.api_key_fingerprint = _token_fingerprint(token)
         return await call_next(request)
 
+    # Register CORS after auth so CORS wraps auth: auth_guard JSONResponses still get ACAO headers.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=allowed_origins != ["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     @app.middleware("http")
     async def log_requests(request: Request, call_next: Any) -> Any:
         """Log HTTP requests."""
@@ -118,6 +119,17 @@ def create_app() -> FastAPI:
             status_code=response.status_code,
         )
         return response
+
+    @app.get("/", tags=["meta"], summary="Service index")
+    async def root() -> dict[str, str]:
+        """Public landing; job routes still need ``Authorization: Bearer``."""
+        return {
+            "service": "vecinita-scraper",
+            "health": "/health",
+            "openapi": "/openapi.json",
+            "documentation": "/docs",
+            "note": "Job and scrape endpoints require a valid SCRAPER_API_KEYS bearer token.",
+        }
 
     @app.get("/health", response_model=ScraperHealthResponse, tags=["health"])
     async def health() -> ScraperHealthResponse:

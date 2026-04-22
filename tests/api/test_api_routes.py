@@ -70,6 +70,14 @@ def mock_db_for_api():
 class TestHealthEndpoint:
     """Test health check endpoint."""
 
+    def test_root_public_without_auth(self, auth_client):
+        """Service root is public so the Render URL is not a bare 401 in a browser."""
+        response = auth_client.get("/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["service"] == "vecinita-scraper"
+        assert "/health" in data.values()
+
     def test_health_check(self, client):
         """Health check should return ok status."""
         response = client.get("/health")
