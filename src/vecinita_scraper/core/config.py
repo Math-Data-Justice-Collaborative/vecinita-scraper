@@ -175,6 +175,22 @@ class AuthConfig:
                 "(or DEV_ADMIN_BEARER_TOKEN for compatibility)"
             )
 
+        # Bearer header parsing uses a single whitespace split; DM frontend sends the same.
+        # Keep rules aligned with backend/src/utils/scraper_api_keys.py.
+        for idx, key in enumerate(self.api_keys):
+            seg = idx + 1
+            if not key.strip():
+                raise ConfigError(f"SCRAPER_API_KEYS segment {seg} is empty.")
+            if any(ch.isspace() for ch in key):
+                raise ConfigError(
+                    f"SCRAPER_API_KEYS segment {seg} contains whitespace; not compatible "
+                    "with Authorization: Bearer or the data-management API key login."
+                )
+            if any(ord(ch) < 32 for ch in key):
+                raise ConfigError(
+                    f"SCRAPER_API_KEYS segment {seg} contains control characters; remove them."
+                )
+
 
 @dataclass
 class CrawlConfig:
