@@ -13,7 +13,7 @@ def test_get_db_raises_when_modal_cloud_without_gateway(monkeypatch: pytest.Monk
     set_db(None)
     monkeypatch.setattr(db_module, "_modal_function_running_in_cloud", lambda: True)
     monkeypatch.delenv("SCRAPER_GATEWAY_BASE_URL", raising=False)
-    monkeypatch.delenv("SCRAPER_PIPELINE_INGEST_TOKEN", raising=False)
+    monkeypatch.delenv("SCRAPER_API_KEYS", raising=False)
     monkeypatch.delenv("SCRAPER_ALLOW_DIRECT_POSTGRES_ON_MODAL", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:5432/db")
 
@@ -29,7 +29,7 @@ def test_get_db_uses_gateway_when_modal_cloud_and_ingest_configured(
     set_db(None)
     monkeypatch.setattr(db_module, "_modal_function_running_in_cloud", lambda: True)
     monkeypatch.setenv("SCRAPER_GATEWAY_BASE_URL", "https://example-gateway.onrender.com")
-    monkeypatch.setenv("SCRAPER_PIPELINE_INGEST_TOKEN", "ingest-secret")
+    monkeypatch.setenv("SCRAPER_API_KEYS", "ingest-secret")
 
     db = get_db()
     assert isinstance(db, GatewayHttpPipelinePersistence)
@@ -41,7 +41,7 @@ def test_get_db_allows_postgres_when_escape_hatch(monkeypatch: pytest.MonkeyPatc
     set_db(None)
     monkeypatch.setattr(db_module, "_modal_function_running_in_cloud", lambda: True)
     monkeypatch.delenv("SCRAPER_GATEWAY_BASE_URL", raising=False)
-    monkeypatch.delenv("SCRAPER_PIPELINE_INGEST_TOKEN", raising=False)
+    monkeypatch.delenv("SCRAPER_API_KEYS", raising=False)
     monkeypatch.setenv("SCRAPER_ALLOW_DIRECT_POSTGRES_ON_MODAL", "1")
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:5432/db")
 

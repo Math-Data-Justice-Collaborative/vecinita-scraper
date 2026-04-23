@@ -256,8 +256,7 @@ class PostgresDB:
                     total = int(total_row["total"] if total_row is not None else 0)
 
                     cursor.execute(
-                        _JOB_DETAIL_SELECT
-                        + """
+                        _JOB_DETAIL_SELECT + """
                         WHERE (%s IS NULL OR j.user_id = %s)
                         ORDER BY j.created_at DESC
                         LIMIT %s
@@ -548,11 +547,19 @@ _db_instance: PostgresDB | None = None
 _gateway_http_instance: Any = None
 
 
+def _scraper_api_key_segments_env() -> list[str]:
+    return [p.strip() for p in str(os.getenv("SCRAPER_API_KEYS", "")).split(",") if p.strip()]
+
+
+def _first_scraper_api_key_env() -> str:
+    parts = _scraper_api_key_segments_env()
+    return parts[0] if parts else ""
+
+
 def _use_gateway_http_pipeline() -> bool:
     """When set, workers persist via Render gateway HTTP instead of psycopg2 on Modal."""
     return bool(
-        str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip()
-        and str(os.getenv("SCRAPER_PIPELINE_INGEST_TOKEN", "")).strip()
+        str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip() and _first_scraper_api_key_env()
     )
 
 
@@ -588,17 +595,17 @@ def get_db() -> PostgresDB | Any:
 
             _gateway_http_instance = GatewayHttpPipelinePersistence(
                 base_url=str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip(),
-                token=str(os.getenv("SCRAPER_PIPELINE_INGEST_TOKEN", "")).strip(),
+                token=_first_scraper_api_key_env(),
             )
         return _gateway_http_instance
     if _modal_function_running_in_cloud() and not _allow_direct_postgres_from_modal_cloud():
         raise ConfigError(
             "Modal scraper workers must persist through the Render gateway (HTTP), not a direct "
             "Postgres connection from Modal. Set SCRAPER_GATEWAY_BASE_URL to the gateway public "
-            "base URL and SCRAPER_PIPELINE_INGEST_TOKEN to match the gateway's "
-            "SCRAPER_PIPELINE_INGEST_TOKEN. You can omit MODAL_DATABASE_URL / DATABASE_URL on "
-            "Modal for pipeline-only workers when this pair is set. See "
-            "docs/deployment/RENDER_SHARED_ENV_CONTRACT.md. "
+            "base URL and SCRAPER_API_KEYS (comma-separated; the first segment is sent as the "
+            "pipeline ingest header token; the gateway must list the same key set). You can omit "
+            "MODAL_DATABASE_URL / DATABASE_URL on Modal for pipeline-only workers when this pair "
+            "is set. See docs/deployment/RENDER_SHARED_ENV_CONTRACT.md. "
             "For exceptional debugging only, set SCRAPER_ALLOW_DIRECT_POSTGRES_ON_MODAL=1."
         )
     if _db_instance is None:

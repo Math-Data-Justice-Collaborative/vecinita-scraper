@@ -88,11 +88,9 @@ async def _dispatch_scrape_job_to_modal_worker(
 
 
 def _pipeline_http_ingest_configured() -> bool:
-    """True when base URL and ingest token env vars are set (gateway HTTP pipeline)."""
-    return bool(
-        str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip()
-        and str(os.getenv("SCRAPER_PIPELINE_INGEST_TOKEN", "")).strip()
-    )
+    """True when gateway base URL and at least one SCRAPER_API_KEYS segment are set."""
+    keys = [p.strip() for p in str(os.getenv("SCRAPER_API_KEYS", "")).split(",") if p.strip()]
+    return bool(str(os.getenv("SCRAPER_GATEWAY_BASE_URL", "")).strip() and keys)
 
 
 def _modal_control_plane_requires_postgres_but_missing() -> bool:
