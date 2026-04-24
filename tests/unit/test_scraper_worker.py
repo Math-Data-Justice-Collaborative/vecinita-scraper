@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from vecinita_scraper.core.models import CrawlConfig, JobStatus, ScrapeJobQueueData
-from vecinita_scraper.workers.scraper import determine_content_type, run_scrape_job
+from vecinita_scraper.workers.ingestion_pipeline import determine_content_type
+from vecinita_scraper.workers.scraper import run_scrape_job
 
 
 class FakePage:

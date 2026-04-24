@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -9,6 +10,12 @@ import httpx
 
 from vecinita_scraper.core.errors import DatabaseError
 from vecinita_scraper.core.logger import get_logger
+from vecinita_scraper.workers.pipeline_retry import (
+    gateway_retry_policy_from_env,
+    is_transient_http_status,
+    max_gateway_http_retries,
+    sleep_before_retry_seconds,
+)
 
 logger = get_logger(__name__)
 
@@ -40,30 +47,68 @@ class GatewayHttpPipelinePersistence:
         path: str,
         *,
         json: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> httpx.Response:
-        try:
-            async with httpx.AsyncClient(timeout=_timeout_seconds()) as client:
-                r = await client.request(method, self._url(path), json=json, headers=self._headers)
-        except httpx.HTTPError as exc:
-            logger.exception("Gateway pipeline HTTP error", path=path)
-            raise DatabaseError(f"Gateway pipeline HTTP error: {exc}") from exc
+        headers = {**self._headers, **(extra_headers or {})}
+        retry_kw = gateway_retry_policy_from_env()
+        max_tries = max_gateway_http_retries()
+        for attempt in range(max_tries):
+            try:
+                async with httpx.AsyncClient(timeout=_timeout_seconds()) as client:
+                    r = await client.request(method, self._url(path), json=json, headers=headers)
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as exc:
+                if attempt + 1 >= max_tries:
+                    logger.exception("Gateway pipeline HTTP error", path=path)
+                    raise DatabaseError(f"Gateway pipeline HTTP error: {exc}") from exc
+                delay = sleep_before_retry_seconds(attempt + 1, **retry_kw)
+                await asyncio.sleep(delay)
+                continue
+            except httpx.HTTPError as exc:
+                logger.exception("Gateway pipeline HTTP error", path=path)
+                raise DatabaseError(f"Gateway pipeline HTTP error: {exc}") from exc
 
-        if r.status_code >= 400:
-            detail = (r.text or "")[:2000]
-            raise DatabaseError(
-                f"Gateway pipeline error {r.status_code} for {path}: {detail}"
-            )
-        if r.status_code == 204:
+            if r.status_code >= 400 and is_transient_http_status(r.status_code):
+                if attempt + 1 >= max_tries:
+                    detail = (r.text or "")[:2000]
+                    raise DatabaseError(
+                        f"Gateway pipeline error {r.status_code} for {path}: {detail}"
+                    )
+                delay = sleep_before_retry_seconds(attempt + 1, **retry_kw)
+                await asyncio.sleep(delay)
+                continue
+
+            if r.status_code >= 400:
+                detail = (r.text or "")[:2000]
+                raise DatabaseError(
+                    f"Gateway pipeline error {r.status_code} for {path}: {detail}"
+                )
             return r
-        return r
+
+        raise RuntimeError("unexpected fallthrough in _request")  # pragma: no cover
 
     async def update_job_status(
-        self, job_id: str, status: str, error_message: str | None = None
+        self,
+        job_id: str,
+        status: str,
+        error_message: str | None = None,
+        *,
+        pipeline_stage: str | None = None,
+        error_category: str | None = None,
+        request_id: str | None = None,
     ) -> None:
+        body: dict[str, Any] = {"status": status, "error_message": error_message}
+        if pipeline_stage is not None:
+            body["pipeline_stage"] = pipeline_stage
+        if error_category is not None:
+            body["error_category"] = error_category
+        extra: dict[str, str] = {}
+        if request_id and str(request_id).strip():
+            extra["X-Request-Id"] = str(request_id).strip()
         await self._request(
             "POST",
             f"/jobs/{job_id}/status",
-            json={"status": status, "error_message": error_message},
+            json=body,
+            extra_headers=extra or None,
         )
 
     async def store_crawled_url(

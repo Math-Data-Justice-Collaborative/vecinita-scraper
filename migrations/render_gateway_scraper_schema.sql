@@ -78,7 +78,9 @@ CREATE TABLE IF NOT EXISTS chunks (
     chunk_text TEXT NOT NULL,
     position INTEGER NOT NULL,
     token_count INTEGER NOT NULL DEFAULT 0,
-    semantic_boundary BOOLEAN NOT NULL DEFAULT false
+    semantic_boundary BOOLEAN NOT NULL DEFAULT false,
+    raw_text TEXT,
+    enriched_text TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_processed_doc_id ON chunks(processed_doc_id);
@@ -96,5 +98,8 @@ CREATE TABLE IF NOT EXISTS embeddings (
 CREATE INDEX IF NOT EXISTS idx_embeddings_job_id ON embeddings(job_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_chunk_id ON embeddings(chunk_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_model_name ON embeddings(model_name);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_embeddings_chunk_id_model_name
+    ON embeddings (chunk_id, model_name);
 
 COMMIT;

@@ -217,10 +217,22 @@ def lookup_scraper_deployed_function(fn_tag: str) -> Any:
 
 
 async def spawn_deployed_worker_map(fn_tag: str, payloads: list[Any]) -> None:
-    """Submit many worker jobs without waiting for results (Modal ``spawn_map`` batch pattern)."""
+    """Submit many worker jobs without waiting for results (Modal ``spawn_map`` batch pattern).
+
+    Batches are capped (``MODAL_PIPELINE_MAX_CONCURRENT_SPAWNS``) so a large drain does not
+    overload Modal with a single enormous ``spawn_map`` (**US2** burst / bounded concurrency).
+    """
     if not payloads:
         return
-    await lookup_scraper_deployed_function(fn_tag).spawn_map.aio(payloads)
+    from vecinita_scraper.workers.pipeline_spawn import (
+        chunk_payloads_for_bounded_spawn,
+        max_concurrent_worker_spawns,
+    )
+
+    fn = lookup_scraper_deployed_function(fn_tag)
+    cap = max_concurrent_worker_spawns()
+    for batch in chunk_payloads_for_bounded_spawn(payloads, cap):
+        await fn.spawn_map.aio(batch)
 
 
 @app.function(image=image, secrets=APP_SECRETS, timeout=60)

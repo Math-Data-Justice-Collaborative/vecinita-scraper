@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from vecinita_scraper.app import (
@@ -17,6 +18,10 @@ from vecinita_scraper.core.db import get_db
 from vecinita_scraper.core.errors import EmbeddingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import EmbedJobQueueData, JobStatus, StoreJobQueueData
+from vecinita_scraper.workers.pipeline_errors import (
+    ERROR_CATEGORY_EMBEDDING,
+    ERROR_CATEGORY_EMBEDDING_PARTIAL,
+)
 
 logger = get_logger(__name__)
 
@@ -80,8 +85,27 @@ async def embedder_worker(job_payloads: list[dict[str, Any]]) -> list[dict[str, 
         try:
             result = await run_embedding_job(job_data, db=db, embedding_client=client)
         except Exception as exc:
+            cat = (
+                ERROR_CATEGORY_EMBEDDING_PARTIAL
+                if job_data.chunk_ids
+                else ERROR_CATEGORY_EMBEDDING
+            )
+            msg = str(exc)
+            if job_data.chunk_ids:
+                msg = json.dumps(
+                    {
+                        "message": msg,
+                        "partial_completion": True,
+                        "requires_reprocess": True,
+                    },
+                    ensure_ascii=False,
+                )
             await db.update_job_status(
-                job_data.job_id, JobStatus.FAILED.value, error_message=str(exc)
+                job_data.job_id,
+                JobStatus.FAILED.value,
+                error_message=msg,
+                pipeline_stage="failed",
+                error_category=cat,
             )
             logger.exception("Embedding job failed", job_id=job_data.job_id)
             raise EmbeddingError(str(exc)) from exc

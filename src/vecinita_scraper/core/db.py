@@ -272,24 +272,52 @@ class PostgresDB:
             raise DatabaseError(f"Failed to list jobs: {exc}") from exc
 
     async def update_job_status(
-        self, job_id: str, status: str, error_message: str | None = None
+        self,
+        job_id: str,
+        status: str,
+        error_message: str | None = None,
+        *,
+        pipeline_stage: str | None = None,
+        error_category: str | None = None,
     ) -> None:
-        """Update job status."""
+        """Update job status.
+
+        Optional ``pipeline_stage`` / ``error_category`` merge into ``metadata`` jsonb.
+        """
         now = datetime.now(UTC)
+        meta_patch: dict[str, Any] = {}
+        if pipeline_stage is not None:
+            meta_patch["pipeline_stage"] = sanitize_postgres_text(pipeline_stage)
+        if error_category is not None:
+            meta_patch["error_category"] = sanitize_postgres_text(error_category)
 
         def operation() -> None:
+            assert Json is not None
             with self._connect() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        UPDATE scraping_jobs
-                        SET status = %s,
-                            error_message = %s,
-                            updated_at = %s
-                        WHERE id = %s
-                        """,
-                        (status, error_message, now, job_id),
-                    )
+                    if meta_patch:
+                        cursor.execute(
+                            """
+                            UPDATE scraping_jobs
+                            SET status = %s,
+                                error_message = %s,
+                                updated_at = %s,
+                                metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                            WHERE id = %s
+                            """,
+                            (status, error_message, now, Json(meta_patch), job_id),
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            UPDATE scraping_jobs
+                            SET status = %s,
+                                error_message = %s,
+                                updated_at = %s
+                            WHERE id = %s
+                            """,
+                            (status, error_message, now, job_id),
+                        )
                     if cursor.rowcount == 0:
                         raise DatabaseError(
                             "scraping_jobs status update affected 0 rows "

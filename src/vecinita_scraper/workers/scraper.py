@@ -19,7 +19,6 @@ from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import (
     CrawlConfig,
     JobStatus,
-    ProcessJobQueueData,
     ScrapeJobQueueData,
 )
 from vecinita_scraper.core.outcome_kinds import FailureCategory, ResponseKind
@@ -27,30 +26,10 @@ from vecinita_scraper.crawlers.classification import SUBSTANTIVE_MIN_CHARS
 from vecinita_scraper.crawlers.crawl4ai_adapter import Crawl4AIAdapter, CrawledPage
 from vecinita_scraper.crawlers.document_fetcher import RoutedDocument, try_direct_document_fetch
 from vecinita_scraper.crawlers.outcome_codec import merge_legacy_and_outcome
+from vecinita_scraper.workers.ingestion_pipeline import enqueue_page_for_document_pipeline
 from vecinita_scraper.workers.job_failure import report_worker_job_failure
 
 logger = get_logger(__name__)
-
-
-def determine_content_type(url: str) -> str:
-    """Best-effort content type inference from URL."""
-    lowered = url.lower()
-    if lowered.endswith(".pdf"):
-        return "pdf"
-    if lowered.endswith(".docx"):
-        return "docx"
-    if lowered.endswith(".html") or lowered.endswith(".htm"):
-        return "html"
-    return "markdown"
-
-
-def processor_content_type_for_page(page: CrawledPage, url: str) -> str:
-    """Map crawl outcome to Docling pipeline content_type."""
-    if page.response_kind == ResponseKind.PDF:
-        return "pdf"
-    if page.response_kind == ResponseKind.PLAIN_TEXT:
-        return "markdown"
-    return determine_content_type(url)
 
 
 def _hash_content(content: str) -> str:
@@ -195,34 +174,20 @@ async def run_scrape_job(
         )
 
         if not page.success:
+            # FR-009: failed pages (including policy-blocked) never enter chunk / LLM / embed paths.
             failed_count += 1
             continue
 
-        content_type = processor_content_type_for_page(page, page.url)
         raw_content = page.markdown or page.cleaned_html or page.html
-        extracted_content_id = await database.store_extracted_content(
+        await enqueue_page_for_document_pipeline(
+            job_data=job_data,
+            page=page,
             crawled_url_id=crawled_url_id,
-            content_type=content_type,
             raw_content=raw_content,
+            database=database,
+            process_queue=queue,
         )
-
-        payload = ProcessJobQueueData(
-            job_id=job_data.job_id,
-            crawled_url_id=crawled_url_id,
-            extracted_content_id=extracted_content_id,
-            raw_content=raw_content,
-            content_type=content_type,
-        )
-        await queue.put.aio(payload.model_dump(mode="json"))
         processed_count += 1
-
-        logger.info(
-            "Queued extracted page for processing",
-            job_id=job_data.job_id,
-            crawled_url_id=crawled_url_id,
-            extracted_content_id=extracted_content_id,
-            url=page.url,
-        )
 
     if processed_count == 0:
         aggregate = build_zero_success_aggregate_message(pages)
