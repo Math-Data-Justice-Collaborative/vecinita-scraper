@@ -290,6 +290,11 @@ class PostgresDB:
                         """,
                         (status, error_message, now, job_id),
                     )
+                    if cursor.rowcount == 0:
+                        raise DatabaseError(
+                            "scraping_jobs status update affected 0 rows "
+                            f"(job_id={job_id!r} is missing from this database)"
+                        )
 
         try:
             await self._run(operation)
