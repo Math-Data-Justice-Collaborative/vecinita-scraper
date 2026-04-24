@@ -36,9 +36,12 @@ def decode_outcome_error(error_message: str | None) -> dict[str, Any] | None:
     if not error_message or not error_message.strip().startswith("{"):
         return None
     try:
-        data = json.loads(error_message)
+        raw = json.loads(error_message)
     except json.JSONDecodeError:
         return None
+    if not isinstance(raw, dict):
+        return None
+    data: dict[str, Any] = raw
     has_version = data.get("outcome_schema_version") == OUTCOME_SCHEMA_VERSION
     has_category = "failure_category" in data
     if not has_version and not has_category:

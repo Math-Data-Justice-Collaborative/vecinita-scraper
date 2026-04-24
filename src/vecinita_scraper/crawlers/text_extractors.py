@@ -53,7 +53,7 @@ def extract_pdf_text(data: bytes) -> str:  # noqa: C901
 
     if getattr(reader, "is_encrypted", False):
         try:
-            decrypt_rc = reader.decrypt("")  # type: ignore[union-attr]
+            decrypt_rc = reader.decrypt("")
             if decrypt_rc == 0:
                 raise DirectDocumentExtractError(
                     FailureCategory.PDF_PASSWORD_PROTECTED,
