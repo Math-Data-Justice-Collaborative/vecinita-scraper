@@ -37,11 +37,13 @@ class FakeCrawler:
 
 def build_result(url: str, links: list[str] | None = None, success: bool = True) -> SimpleNamespace:
     """Create a fake Crawl4AI result object."""
+    filler = "x" * 220
+    md = f"# {url}\n{filler}"
     return SimpleNamespace(
         url=url,
         html=f"<html><body>{url}</body></html>",
         cleaned_html=f"<main>{url}</main>",
-        markdown=SimpleNamespace(raw_markdown=f"# {url}", fit_markdown=f"# {url}"),
+        markdown=SimpleNamespace(raw_markdown=md, fit_markdown=md),
         extracted_content=None,
         links={"internal": links or []},
         media={"images": []},
@@ -103,7 +105,7 @@ async def test_crawl_single_normalizes_result_payload() -> None:
     )
 
     assert page.url == "https://example.com/docs"
-    assert page.markdown == "# https://example.com/docs"
+    assert page.markdown.startswith("# https://example.com/docs")
     assert page.links == ["/more"]
     assert len(page.content_hash) == 64
     assert page.success is True

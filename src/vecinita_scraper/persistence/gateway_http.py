@@ -74,18 +74,29 @@ class GatewayHttpPipelinePersistence:
         content_hash: str,
         status: str = "success",
         error_message: str | None = None,
+        *,
+        response_kind: str | None = None,
+        failure_category: str | None = None,
+        operator_summary: str | None = None,
     ) -> str:
+        body: dict[str, Any] = {
+            "job_id": job_id,
+            "url": url,
+            "raw_content": raw_content,
+            "content_hash": content_hash,
+            "status": status,
+            "error_message": error_message,
+        }
+        if response_kind is not None:
+            body["response_kind"] = response_kind
+        if failure_category is not None:
+            body["failure_category"] = failure_category
+        if operator_summary is not None:
+            body["operator_summary"] = operator_summary
         r = await self._request(
             "POST",
             "/crawled-urls",
-            json={
-                "job_id": job_id,
-                "url": url,
-                "raw_content": raw_content,
-                "content_hash": content_hash,
-                "status": status,
-                "error_message": error_message,
-            },
+            json=body,
         )
         data = r.json()
         cid = data.get("crawled_url_id")

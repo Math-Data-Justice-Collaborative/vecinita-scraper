@@ -56,6 +56,20 @@ class CrawlConfig(BaseModel):
         description="Whether to download image assets (higher bandwidth).",
         examples=[False],
     )
+    max_direct_fetch_bytes: int = Field(
+        default=15_000_000,
+        ge=64_000,
+        le=50_000_000,
+        description="Maximum bytes to download for direct PDF/text fetches (non-browser path).",
+        examples=[15_000_000],
+    )
+    delay_before_return_html_seconds: float = Field(
+        default=1.5,
+        ge=0.0,
+        le=30.0,
+        description="Extra settle time before HTML snapshot when wait_for_content is enabled.",
+        examples=[1.5],
+    )
 
 
 class ChunkingConfig(BaseModel):

@@ -44,6 +44,10 @@ dependencies = [
     
     # Async compatibility
     "aiohttp>=3.8.0",
+
+    # Direct PDF / text fetch (011)
+    "pypdf>=5.0.0",
+    "charset-normalizer>=3.3.0",
 ]
 
 [project.optional-dependencies]
@@ -116,6 +120,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["structlog", "docling", "docling.document_converter"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pypdf", "charset_normalizer"]
 ignore_missing_imports = true
 
 [tool.ruff]

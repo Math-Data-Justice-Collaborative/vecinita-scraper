@@ -11,6 +11,8 @@ from urllib.parse import urljoin, urlparse
 from vecinita_scraper.core.errors import CrawlingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import CrawlConfig
+from vecinita_scraper.core.outcome_kinds import FailureCategory, ResponseKind
+from vecinita_scraper.crawlers.classification import finalize_html_crawled_page
 
 logger = get_logger(__name__)
 
@@ -31,6 +33,9 @@ class CrawledPage:
     status_code: int | None = None
     success: bool = True
     error_message: str | None = None
+    response_kind: ResponseKind | None = None
+    failure_category: FailureCategory | None = None
+    operator_summary: str | None = None
 
 
 class Crawl4AIAdapter:
@@ -96,7 +101,7 @@ class Crawl4AIAdapter:
         if not success:
             logger.warning("Crawl4AI returned unsuccessful result", url=url, error=error_message)
 
-        return CrawledPage(
+        page = CrawledPage(
             url=getattr(result, "url", url) or url,
             markdown=markdown_text,
             html=html,
@@ -114,6 +119,8 @@ class Crawl4AIAdapter:
             success=success,
             error_message=error_message,
         )
+        finalize_html_crawled_page(page)
+        return page
 
     def _create_crawler(self) -> Any:
         """Build the Crawl4AI AsyncWebCrawler instance."""
@@ -142,10 +149,16 @@ class Crawl4AIAdapter:
             ) from exc
 
         wait_for = "body" if self._crawl_config.wait_for_content else None
+        delay_html = (
+            float(self._crawl_config.delay_before_return_html_seconds)
+            if self._crawl_config.wait_for_content
+            else 0.1
+        )
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
             page_timeout=self._crawl_config.timeout_seconds * 1000,
             wait_for=wait_for,
+            delay_before_return_html=delay_html,
             remove_overlay_elements=True,
             exclude_external_links=not self._crawl_config.include_links,
             exclude_external_images=not self._crawl_config.include_images,

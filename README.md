@@ -19,6 +19,13 @@ Remote integration contract: [`specs/003-consolidate-scraper-dm/contracts/dm-api
 - PostgreSQL-backed job state and document persistence
 - Direct service-to-service calls to embedding and model endpoints
 
+## Crawl outcomes & smoke list (spec 011)
+
+- **Direct fetch**: PDF and `text/*` URLs are fetched with `httpx` (bounded by `CrawlConfig.max_direct_fetch_bytes`) before the browser path. HTML stays on **Crawl4AI**.
+- **Classification**: Failed HTML crawls attach structured JSON in `crawled_urls.error_message` (see `specs/011-fix-scraper-success/contracts/crawled-url-outcome.md`) plus optional `response_kind` / `failure_category` / `operator_summary` fields on gateway ingest.
+- **Smoke URLs**: `smoke/crawl_smoke_urls.yaml` lists regression targets (SC-001 composition). Run live checks only with approval:
+  `pytest tests/integration/test_smoke_crawl_live.py -m live` (default CI uses `-m "not live"`).
+
 ## Development
 
 ```bash

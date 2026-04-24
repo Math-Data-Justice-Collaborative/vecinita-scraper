@@ -61,22 +61,26 @@ class TestFullPipelineFlow:
             )
             mock_adapter.return_value = mock_adapter_inst
 
-            with patch("vecinita_scraper.workers.scraper.process_jobs_queue") as mock_queue:
-                mock_queue.put.aio = AsyncMock()
+            with patch(
+                "vecinita_scraper.workers.scraper.try_direct_document_fetch",
+                AsyncMock(return_value=None),
+            ):
+                with patch("vecinita_scraper.workers.scraper.process_jobs_queue") as mock_queue:
+                    mock_queue.put.aio = AsyncMock()
 
-                scrape_payload = ScrapeJobQueueData(
-                    job_id=job_id,
-                    url="https://example.com",
-                    user_id="test-user",
-                    crawl_config=CrawlConfig(),
-                )
+                    scrape_payload = ScrapeJobQueueData(
+                        job_id=job_id,
+                        url="https://example.com",
+                        user_id="test-user",
+                        crawl_config=CrawlConfig(),
+                    )
 
-                await run_scrape_job(scrape_payload, db=db, process_queue=mock_queue)
+                    await run_scrape_job(scrape_payload, db=db, process_queue=mock_queue)
 
-                # Verify scraper updated status and stored content
-                assert db.update_job_status.called
-                assert db.store_crawled_url.called
-                assert db.store_extracted_content.called
+                    # Verify scraper updated status and stored content
+                    assert db.update_job_status.called
+                    assert db.store_crawled_url.called
+                    assert db.store_extracted_content.called
 
         # Step 2: Processor worker
         from vecinita_scraper.workers.processor import run_processing_job

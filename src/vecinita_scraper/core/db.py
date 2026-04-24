@@ -310,8 +310,23 @@ class PostgresDB:
         content_hash: str,
         status: str = "success",
         error_message: str | None = None,
+        *,
+        response_kind: str | None = None,
+        failure_category: str | None = None,
+        operator_summary: str | None = None,
     ) -> str:
-        """Upsert crawled URL by (job_id, url) and return stable crawled_url_id."""
+        """Upsert crawled URL by (job_id, url) and return stable crawled_url_id.
+
+        Optional outcome fields are accepted for parity with gateway HTTP persistence;
+        local Postgres rows only persist ``error_message`` today.
+        """
+        if any((response_kind, failure_category, operator_summary)):
+            logger.debug(
+                "Optional crawled_url outcome fields not stored in local Postgres (use gateway)",
+                response_kind=response_kind,
+                failure_category=failure_category,
+                has_operator_summary=bool(operator_summary),
+            )
         new_id = str(uuid4())
         crawled_at = datetime.now(UTC)
 

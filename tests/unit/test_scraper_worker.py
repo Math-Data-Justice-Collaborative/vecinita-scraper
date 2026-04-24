@@ -21,6 +21,10 @@ class FakePage:
         *,
         success: bool = True,
         error_message: str | None = None,
+        response_kind: object | None = None,
+        failure_category: object | None = None,
+        operator_summary: str | None = None,
+        extracted_content: str | None = None,
     ) -> None:
         self.url = url
         self.markdown = markdown
@@ -29,6 +33,13 @@ class FakePage:
         self.content_hash = content_hash
         self.success = success
         self.error_message = error_message
+        self.response_kind = response_kind
+        self.failure_category = failure_category
+        self.operator_summary = operator_summary
+        self.extracted_content = extracted_content
+        self.links: list[str] = []
+        self.media: list[dict[str, object]] = []
+        self.metadata: dict[str, object] = {}
 
 
 class FakeQueue:
@@ -64,6 +75,10 @@ async def test_run_scrape_job_updates_statuses_and_enqueues_pages(mock_db, monke
     monkeypatch.setattr(
         "vecinita_scraper.workers.scraper.Crawl4AIAdapter",
         lambda crawl_config: adapter,
+    )
+    monkeypatch.setattr(
+        "vecinita_scraper.workers.scraper.try_direct_document_fetch",
+        AsyncMock(return_value=None),
     )
 
     result = await run_scrape_job(job, db=mock_db, process_queue=queue)
