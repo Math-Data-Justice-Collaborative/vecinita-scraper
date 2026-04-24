@@ -311,11 +311,11 @@ class PostgresDB:
         status: str = "success",
         error_message: str | None = None,
     ) -> str:
-        """Store crawled URL data and return crawled_url_id."""
-        crawled_url_id = str(uuid4())
+        """Upsert crawled URL by (job_id, url) and return stable crawled_url_id."""
+        new_id = str(uuid4())
         crawled_at = datetime.now(UTC)
 
-        def operation() -> None:
+        def operation() -> str:
             _ = raw_content
             with self._connect() as connection:
                 with connection.cursor() as cursor:
@@ -330,9 +330,15 @@ class PostgresDB:
                             error_message,
                             crawled_at
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (job_id, url) DO UPDATE SET
+                            raw_content_hash = EXCLUDED.raw_content_hash,
+                            status = EXCLUDED.status,
+                            error_message = EXCLUDED.error_message,
+                            crawled_at = EXCLUDED.crawled_at
+                        RETURNING id
                         """,
                         (
-                            crawled_url_id,
+                            new_id,
                             job_id,
                             url,
                             content_hash,
@@ -341,9 +347,16 @@ class PostgresDB:
                             crawled_at,
                         ),
                     )
+                    row = cursor.fetchone()
+                    if row is None or row.get("id") is None:
+                        raise DatabaseError(
+                            "crawled_urls upsert did not return id "
+                            f"(job_id={job_id!r}, url={url!r})"
+                        )
+                    return str(row["id"])
 
         try:
-            await self._run(operation)
+            crawled_url_id = await self._run(operation)
             logger.info("Stored crawled URL", job_id=job_id, url=url)
             return crawled_url_id
         except Exception as exc:
