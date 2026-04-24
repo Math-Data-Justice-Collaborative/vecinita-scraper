@@ -46,6 +46,9 @@ except ImportError:  # pragma: no cover - used only in local test environments w
         def pip_install(self, *packages: str) -> _DummyImage:
             return self
 
+        def run_commands(self, *commands: str) -> _DummyImage:
+            return self
+
         def add_local_python_source(self, *packages: str) -> _DummyImage:
             return self
 
@@ -109,6 +112,7 @@ image = (
         "structlog>=23.0",
         "aiohttp>=3.8.0",
     )
+    .run_commands("python -m playwright install --with-deps chromium")
     .add_local_python_source("vecinita_scraper")
 )
 

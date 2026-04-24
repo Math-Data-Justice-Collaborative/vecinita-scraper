@@ -75,6 +75,11 @@ def test_workers_app_image_mounts_local_package() -> None:
         f"'{_REQUIRED_CALL}' in the image definition so the "
         "vecinita_scraper package is available inside the Modal container."
     )
+    assert "playwright install" in content and "--with-deps" in content and "chromium" in content, (
+        f"{_WORKERS_APP.relative_to(_SRC_ROOT.parent)} must run "
+        "`python -m playwright install --with-deps chromium` after pip_install "
+        "so Crawl4AI can launch Chromium in Modal (browser bundle is not installed by pip alone)."
+    )
 
 
 @pytest.mark.unit
