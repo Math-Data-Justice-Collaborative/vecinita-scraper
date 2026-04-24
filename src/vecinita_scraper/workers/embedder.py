@@ -72,6 +72,7 @@ async def embedder_worker(job_payloads: list[dict[str, Any]]) -> list[dict[str, 
     """Modal entrypoint for embedding one or more queued chunk batches."""
     results: list[dict[str, Any]] = []
     client = EmbeddingClient()
+    # One get_db() per batch; ConfigError surfaces here if misconfigured.
     db = get_db()
 
     for payload in job_payloads:

@@ -22,6 +22,7 @@ from vecinita_scraper.core.models import (
     EmbedJobQueueData,
     JobStatus,
 )
+from vecinita_scraper.workers.job_failure import report_worker_job_failure
 
 logger = get_logger(__name__)
 
@@ -88,8 +89,7 @@ async def chunker_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
     try:
         result = await run_chunking_job(job_data)
     except Exception as exc:
-        db = get_db()
-        await db.update_job_status(job_data.job_id, JobStatus.FAILED.value, error_message=str(exc))
+        await report_worker_job_failure(job_data.job_id, exc)
         logger.exception("Chunking job failed", job_id=job_data.job_id)
         raise ChunkingError(str(exc)) from exc
 

@@ -16,6 +16,7 @@ from vecinita_scraper.core.errors import ProcessingError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import ChunkJobQueueData, JobStatus, ProcessJobQueueData
 from vecinita_scraper.processors.docling_processor import DoclingProcessor
+from vecinita_scraper.workers.job_failure import report_worker_job_failure
 
 logger = get_logger(__name__)
 
@@ -71,8 +72,7 @@ async def processor_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
     try:
         result = await run_processing_job(job_data)
     except Exception as exc:
-        db = get_db()
-        await db.update_job_status(job_data.job_id, JobStatus.FAILED.value, error_message=str(exc))
+        await report_worker_job_failure(job_data.job_id, exc)
         logger.exception("Processing job failed", job_id=job_data.job_id)
         raise ProcessingError(str(exc)) from exc
 

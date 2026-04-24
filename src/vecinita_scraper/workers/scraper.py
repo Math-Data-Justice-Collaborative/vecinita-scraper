@@ -16,6 +16,7 @@ from vecinita_scraper.core.errors import CrawlingError, ValidationError
 from vecinita_scraper.core.logger import get_logger
 from vecinita_scraper.core.models import JobStatus, ProcessJobQueueData, ScrapeJobQueueData
 from vecinita_scraper.crawlers.crawl4ai_adapter import Crawl4AIAdapter
+from vecinita_scraper.workers.job_failure import report_worker_job_failure
 
 logger = get_logger(__name__)
 
@@ -111,8 +112,7 @@ async def scraper_worker(job_payload: dict[str, Any]) -> dict[str, Any]:
     try:
         result = await run_scrape_job(job_data)
     except Exception as exc:
-        db = get_db()
-        await db.update_job_status(job_data.job_id, JobStatus.FAILED.value, error_message=str(exc))
+        await report_worker_job_failure(job_data.job_id, exc)
         logger.exception("Scrape job failed", job_id=job_data.job_id, url=job_data.url)
         raise
 
