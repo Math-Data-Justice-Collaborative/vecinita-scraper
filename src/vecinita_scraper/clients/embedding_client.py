@@ -28,12 +28,12 @@ class EmbeddingClient:
     def __init__(self, base_url: str | None = None, api_token: str | None = None) -> None:
         config = _api_config()
         if base_url is None:
-            resolved_base_url = config.vecinita_embedding_api_url
+            resolved_base_url = config.embedding_upstream_url
         else:
             resolved_base_url = base_url
 
         if not resolved_base_url and not _truthy(str(config.modal_function_invocation)):
-            raise EmbeddingError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
+            raise EmbeddingError("Missing required API configuration: EMBEDDING_UPSTREAM_URL")
 
         self._base_url = resolved_base_url.rstrip("/") if resolved_base_url else ""
         _ = api_token  # Auth tokens are intentionally not forwarded from scraper clients.

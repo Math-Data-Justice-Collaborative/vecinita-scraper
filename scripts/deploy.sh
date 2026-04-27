@@ -59,7 +59,7 @@ echo "🔍 Checking configuration..."
 
 required_vars=(
     "DATABASE_URL"
-    "VECINITA_EMBEDDING_API_URL"
+    "EMBEDDING_UPSTREAM_URL"
 )
 
 missing_vars=()

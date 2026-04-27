@@ -81,12 +81,12 @@ Required environment variables for the Docker / Render deployment:
 
 - `DATABASE_URL`
 - `SCRAPER_API_KEYS` — comma-separated Bearer secrets (or `DEV_ADMIN_BEARER_TOKEN` for one legacy token). **Omitting this in production causes immediate startup failure** (`ConfigError`).
-- `VECINITA_EMBEDDING_API_URL`
+- `EMBEDDING_UPSTREAM_URL`
 - `CORS_ORIGINS`
 
 Recommended environment variables:
 
-- `VECINITA_MODEL_API_URL`
+- `OLLAMA_BASE_URL`
 - `MODAL_TOKEN_ID`
 - `MODAL_TOKEN_SECRET`
 - `MODAL_WORKSPACE`
@@ -100,7 +100,7 @@ docker run --rm -p 10000:10000 \
 	-e ENVIRONMENT=development \
 	-e DATABASE_URL=postgresql://user:pass@host:5432/db \
 	-e SCRAPER_API_KEYS=local-dev-key \
-	-e VECINITA_EMBEDDING_API_URL=https://example-embedding.modal.run \
+	-e EMBEDDING_UPSTREAM_URL=https://example-embedding.modal.run \
 	-e CORS_ORIGINS=http://localhost:3000 \
 	vecinita-data-management-api-v1
 ```
@@ -111,8 +111,8 @@ docker run --rm -p 10000:10000 \
 - `DB_URL` (optional; used only if `DATABASE_URL` is empty)
 - `DATABASE_URL` (canonical Postgres DSN)
 - `DB_URL` (optional; used only if `DATABASE_URL` is empty, same string otherwise)
-- `VECINITA_EMBEDDING_API_URL`
-- `VECINITA_MODEL_API_URL` when model-assisted extraction is enabled
+- `EMBEDDING_UPSTREAM_URL`
+- `OLLAMA_BASE_URL` when model-assisted extraction is enabled
 - Modal credentials for deploy operations
 
 ## API

@@ -107,8 +107,8 @@ class ModalConfig:
 class APIConfig:
     """External API configuration."""
 
-    vecinita_model_api_url: str
-    vecinita_embedding_api_url: str
+    ollama_base_url: str
+    embedding_upstream_url: str
     modal_function_invocation: bool
     modal_embedding_app_name: str
     modal_embedding_single_function: str
@@ -119,8 +119,8 @@ class APIConfig:
     def from_env() -> "APIConfig":
         """Load API config from environment."""
         return APIConfig(
-            vecinita_model_api_url=_env("VECINITA_MODEL_API_URL"),
-            vecinita_embedding_api_url=_env("VECINITA_EMBEDDING_API_URL"),
+            ollama_base_url=_env("OLLAMA_BASE_URL"),
+            embedding_upstream_url=_env("EMBEDDING_UPSTREAM_URL"),
             modal_function_invocation=_env_bool("MODAL_FUNCTION_INVOCATION", default=False),
             modal_embedding_app_name=_env("MODAL_EMBEDDING_APP_NAME", "vecinita-embedding"),
             modal_embedding_single_function=_env(
@@ -136,8 +136,8 @@ class APIConfig:
         """Validate API config."""
         if self.modal_function_invocation:
             return
-        if not all([self.vecinita_embedding_api_url]):
-            raise ConfigError("Missing required API configuration: VECINITA_EMBEDDING_API_URL")
+        if not all([self.embedding_upstream_url]):
+            raise ConfigError("Missing required API configuration: EMBEDDING_UPSTREAM_URL")
 
 
 @dataclass
