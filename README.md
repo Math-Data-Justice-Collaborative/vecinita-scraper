@@ -38,6 +38,20 @@ make serve
 `PYTHONWARNINGS=ignore:::requests` to suppress known non-blocking
 `RequestsDependencyWarning` noise from `requests` import-time checks.
 
+### Modal embedding message contract (Pact)
+
+Consumer tests for the scraper → Modal embedding RPC surface live under
+`tests/pact/` and write `pacts/vecinita-scraper-vecinita-embedding-modal.json`.
+`tests/unit/test_embedding_client_modal_contract.py` asserts
+`EmbeddingClient._modal_request` matches those shapes when Modal function
+invocation is enabled.
+
+Optional provider verification (after the pact file exists):
+
+```bash
+PACT_VERIFY_SCRAPER_EMBEDDING_MODAL_MESSAGE=1 pytest tests/pact/test_scraper_embedding_modal_message_pact_provider_verify.py
+```
+
 ## Deployment
 
 ```bash

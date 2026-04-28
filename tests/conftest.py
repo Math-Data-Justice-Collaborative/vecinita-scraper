@@ -8,6 +8,10 @@ import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Pact helpers and other test-only modules live next to this file (``tests/``).
+_tests_dir = os.path.dirname(__file__)
+if _tests_dir not in sys.path:
+    sys.path.append(_tests_dir)
 
 # `EmbeddingClient` and other code paths call `get_config()`, which validates Postgres.
 # Unit/integration tests here use mocks and do not need a real database; CI often runs

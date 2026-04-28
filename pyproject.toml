@@ -58,6 +58,7 @@ dev = [
     "pytest-mock>=3.11",
     "hypothesis>=6.0.0",
     "schemathesis>=4.14.3",
+    "pact-python>=3.3.0",
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "black>=23.0",
@@ -77,6 +78,8 @@ markers = [
     "live: tests that hit real APIs (deselect with '-m \"not live\"')",
     "integration: integration tests",
     "unit: unit tests",
+    "contract: contract and pact consumer tests",
+    "pact_provider: Pact provider verification",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
