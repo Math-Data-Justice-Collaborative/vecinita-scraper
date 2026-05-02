@@ -4,7 +4,7 @@ Serverless scraping pipeline for Vecinita.
 
 ## Canonical scraper implementation
 
-This directory ([`services/scraper/`](./)) is the **single** source of truth for scraper behavior
+This directory ([`modal-apps/scraper/`](./)) is the **single** source of truth for scraper behavior
 (crawl, job control, workers, and persistence). Other services (including **data-management-api**)
 must integrate via **HTTP** only: configure `SCRAPER_SERVICE_BASE_URL` to the deployed scraper
 origin and use `packages/service-clients` [`ScraperClient`](../data-management-api/packages/service-clients/service_clients/scraper_client.py)
@@ -82,7 +82,7 @@ This service also ships with a Dockerfile and `render.yaml` for a Render Docker 
 #### Docker / Render (monorepo parity)
 
 Production **`vecinita-data-management-api-v1`** builds from the **repo root** blueprint with
-`dockerfilePath: ./services/scraper/Dockerfile` and `dockerContext: ./services/scraper` (same paths as
+`dockerfilePath: ./modal-apps/scraper/Dockerfile` and `dockerContext: ./modal-apps/scraper` (same paths as
 Render). For baseline timings, cold vs warm-cache behavior, and smoke-run examples, use
 [`specs/002-dm-api-docker-build/quickstart.md`](../../specs/002-dm-api-docker-build/quickstart.md).
 Expect **repeat-edit** rebuilds (source-only changes) to be much faster than a full dependency

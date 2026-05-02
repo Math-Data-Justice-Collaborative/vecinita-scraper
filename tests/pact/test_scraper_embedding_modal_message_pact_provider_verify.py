@@ -35,7 +35,7 @@ def test_verify_scraper_embedding_modal_message_pact() -> None:
     if not pact_path.is_file():
         pytest.skip(
             f"Missing pact file {pact_path} — run: "
-            "cd services/scraper && PYTHONPATH=src pytest tests/pact/"
+            "cd modal-apps/scraper && PYTHONPATH=src pytest tests/pact/"
             "test_scraper_embedding_modal_message_pact.py -q"
         )
 

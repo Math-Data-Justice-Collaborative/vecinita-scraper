@@ -1,4 +1,4 @@
-"""Deploy workers app: ``cd services/scraper && modal deploy modal_workers_entry.py``."""
+"""Deploy workers app: ``cd modal-apps/scraper && modal deploy modal_workers_entry.py``."""
 
 import sys
 from pathlib import Path

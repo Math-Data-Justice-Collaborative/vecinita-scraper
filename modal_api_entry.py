@@ -1,4 +1,4 @@
-"""Deploy HTTP API app: ``cd services/scraper && modal deploy modal_api_entry.py``."""
+"""Deploy HTTP API app: ``cd modal-apps/scraper && modal deploy modal_api_entry.py``."""
 
 import sys
 from pathlib import Path

@@ -1,6 +1,6 @@
 """Pact (sync message): scraper ``EmbeddingClient`` ↔ Modal embedding app (RPC envelope).
 
-Writes ``services/scraper/pacts/vecinita-scraper-vecinita-embedding-modal.json`` (gitignored).
+Writes ``modal-apps/scraper/pacts/vecinita-scraper-vecinita-embedding-modal.json`` (gitignored).
 """
 
 from __future__ import annotations
