@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from fastapi.responses import JSONResponse, Response
@@ -33,7 +33,7 @@ from vecinita_scraper.services.job_control import (
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger(__name__)
 
-_SCRAPER_AUTH_RESPONSES = {
+_SCRAPER_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {
         "description": "Missing or invalid Authorization header.",
     },
