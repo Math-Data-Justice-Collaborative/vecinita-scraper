@@ -33,11 +33,21 @@ from vecinita_scraper.services.job_control import (
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger(__name__)
 
+_SCRAPER_AUTH_RESPONSES = {
+    401: {
+        "description": "Missing or invalid Authorization header.",
+    },
+    403: {
+        "description": "Invalid API key.",
+    },
+}
+
 
 @router.post(
     "",
     response_model=ScrapeJobCreatedResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=_SCRAPER_AUTH_RESPONSES,
     summary="Submit a new scraping job",
     description=(
         "Persists the job and starts crawl work via Modal ``Function.spawn`` on ``scraper_worker`` "
@@ -81,6 +91,7 @@ async def submit_job(request: ScrapeJobRequest) -> ScrapeJobCreatedResponse:
 
 @router.get(
     "/spawns/{call_id}",
+    responses=_SCRAPER_AUTH_RESPONSES,
     summary="Poll Modal scrape worker spawn result",
     description=(
         "Wraps Modal ``FunctionCall.from_id(call_id)`` and ``get(timeout=0)`` (non-blocking poll), "
@@ -128,6 +139,7 @@ async def poll_scrape_spawn_result(
 @router.get(
     "/{job_id}",
     response_model=JobStatusResponse,
+    responses=_SCRAPER_AUTH_RESPONSES,
     summary="Get job status",
     description="Retrieve the current status and progress of a scraping job.",
 )
@@ -171,6 +183,7 @@ async def get_job_status(
 @router.get(
     "",
     response_model=ScrapeJobListResponse,
+    responses=_SCRAPER_AUTH_RESPONSES,
     summary="List jobs",
     description="List recent scraping jobs (limited to last 50).",
 )
@@ -202,6 +215,7 @@ async def list_jobs(
 @router.post(
     "/{job_id}/cancel",
     response_model=ScrapeJobCancelResponse,
+    responses=_SCRAPER_AUTH_RESPONSES,
     summary="Cancel a job",
     description="Cancel a scraping job if it hasn't completed.",
 )
