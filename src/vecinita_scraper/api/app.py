@@ -23,6 +23,7 @@ image = (
     .pip_install(
         "fastapi>=0.100",
         "uvicorn>=0.23.0",
+        "httpx>=0.25.0",
         "psycopg2-binary>=2.9.9",
         "pydantic>=2.0",
         "python-dotenv>=1.0",
